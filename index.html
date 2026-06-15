@@ -337,9 +337,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const QCLASS={measured:"q-measured",proxy:"q-proxy",curated:"q-curated"};
-const EXTRA_LABEL={budget:"Budget fit",appreciation:"Appreciation & value",trendy:"Trendy / young-buyer demand",future:"Future potential",rentability:"Rentability (landlord)",rent_future:"Rent outlook",safety:"Safety / crime (est.)"};
+const EXTRA_LABEL={budget:"In-budget fit (≤$600k)",appreciation:"Appreciation & value",trendy:"Trendy / young-buyer demand",future:"Future potential",rentability:"Rentability (landlord)",rent_future:"Rent outlook",safety:"Safety / crime (est.)"};
 // headline color modes shown above the 10 criteria in the combine menu
-const HEAD_MODES=[["composite","Overall opportunity"],["future","⚡ Future potential"],["rentability","💰 Rentability (landlord)"],["rent_future","📈 Rent outlook"],["safety","🛡 Safety / crime (est.)"]];
+const HEAD_MODES=[["composite","Overall opportunity"],["future","⚡ Future potential"],["rentability","💰 Rentability (landlord)"],["rent_future","📈 Rent outlook"],["safety","🛡 Safety / crime (est.)"],["budget","💵 In-budget fit"]];
 const CAT_ICON={"Beach":"🏖️","Museum":"🏛️","Theater":"🎭","Arts center":"🎨","Gallery":"🖼️","Brewery":"🍺","Nature reserve":"🌲","Park":"🌳","Scenic view":"🌄","Historic site":"🏰","Attraction":"⭐","Garden":"🌷","Marina":"⛵","Market":"🛒","Cafe":"☕","Restaurant":"🍽️","Bar":"🍸"};
 const COUNTY={"001":"Barnstable","003":"Berkshire","005":"Bristol","007":"Dukes","009":"Essex","011":"Franklin","013":"Hampden","015":"Hampshire","017":"Middlesex","019":"Nantucket","021":"Norfolk","023":"Plymouth","025":"Suffolk","027":"Worcester"};
 
@@ -359,12 +359,21 @@ const labels=L.tileLayer("https://cartodb-basemaps-{s}.global.ssl.fastly.net/dar
 MARKERS=L.layerGroup().addTo(map);
 
 function catLabel(c){return META.labels[c]||EXTRA_LABEL[c]||c;}
+// 0-100 fit to the $400-600k goal: peaks in-band, gentle taper below (still affordable), steeper above
+function budgetScore(p){
+  const lo=(META&&META.budget_lo)||400000, hi=(META&&META.budget_hi)||600000, pr=p.price;
+  if(!pr)return p.budget_fit==="unknown"?45:60;
+  if(pr>=lo&&pr<=hi)return 100;
+  if(pr<lo)return Math.max(72,Math.round(100-(lo-pr)/lo*55));
+  return Math.max(0,Math.round(100-(pr-hi)/hi*120));
+}
 function metricVal(p,k){
   if(k==="composite")return p.composite;
   if(k==="future")return p.future??50;
   if(k==="rentability")return p.rentability??50;
   if(k==="rent_future")return p.rent_future??50;
   if(k==="safety")return p.safety??50;
+  if(k==="budget")return budgetScore(p);
   return (p.scores&&p.scores[k])??0;
 }
 function valueFor(p){let s=0;for(const k of colorModes)s+=metricVal(p,k);return s/colorModes.length;}
@@ -382,7 +391,7 @@ function setLegend(mode){
   const t=document.getElementById("legendTitle"),e=document.getElementById("legendEnds"),q=document.getElementById("qkey");
   document.querySelector("#legend .bar").style.background="";
   if(mode==="appr"){t.textContent="5-yr home-price appreciation";e.innerHTML="<span>≤30%</span><span>≥70%</span>";q.style.display="none";}
-  else{t.textContent=colorLabel();e.innerHTML="<span>Lower</span><span>Higher</span>";q.style.display=colorModes.length===1&&colorModes[0]!=="composite"&&colorModes[0]!=="future"&&colorModes[0]!=="rentability"&&colorModes[0]!=="rent_future"&&colorModes[0]!=="safety"?"":"none";}
+  else{t.textContent=colorLabel();e.innerHTML="<span>Lower</span><span>Higher</span>";q.style.display=colorModes.length===1&&colorModes[0]!=="composite"&&colorModes[0]!=="future"&&colorModes[0]!=="rentability"&&colorModes[0]!=="rent_future"&&colorModes[0]!=="safety"&&colorModes[0]!=="budget"?"":"none";}
 }
 function render(){if(!LAYER)return;LAYER.setStyle(view==="state"?styleFor:backdropStyle);
   if(view==="state"){setLegend("score");const lbl=colorShort();
