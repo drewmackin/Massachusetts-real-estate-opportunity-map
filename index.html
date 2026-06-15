@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Massachusetts Real-Estate Opportunity Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080b11; --glass:rgba(17,22,31,.74); --glass-solid:#11161f;
+    --panel:#0e131b; --panel2:#171f2b; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.05);
+    --text:#eef2f7; --muted:#8a99ad; --muted2:#5f6c7e; --accent:#5b9dff;
+    --buy:#34d399; --avoid:#f87171; --gold:#fbbf24; --shadow:0 10px 40px rgba(0,0,0,.45); --r:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;letter-spacing:-.005em}
+  #app{display:flex;height:100vh;overflow:hidden}
+  #map{flex:1;height:100%;background:#070a0f}
+  .glass{background:var(--glass);backdrop-filter:blur(20px) saturate(130%);-webkit-backdrop-filter:blur(20px) saturate(130%);
+    border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+
+  #toolbar{position:absolute;z-index:1000;top:14px;left:14px;right:402px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:9px 12px 9px 14px}
+  #brand{display:flex;align-items:center;gap:10px;padding-right:14px;border-right:1px solid var(--line);white-space:nowrap}
+  #brand .logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:linear-gradient(135deg,#34d399,#5b9dff)}
+  #brand .t{font-weight:700;font-size:13.5px;line-height:1.15}
+  #brand .t small{display:block;font-weight:500;color:var(--muted);font-size:10.5px;margin-top:1px}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field>label{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted2);font-weight:600;padding-left:2px}
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
+  .seg button{background:transparent;color:var(--muted);border:0;padding:6px 11px;font-size:11.5px;font-weight:600;cursor:pointer;border-radius:7px;font-family:inherit;transition:.15s}
+  .seg button:hover{color:var(--text)}
+  .seg button.active,.ntog button.active{background:linear-gradient(135deg,#5b9dff,#4f86e8);color:#06101f;box-shadow:0 2px 8px rgba(91,157,255,.4)}
+  /* keyboard focus ring (on-brand) for all interactive controls */
+  .seg button:focus-visible,.ntog button:focus-visible,.mbtn:focus-visible,.topbtn:focus-visible,.govlink:focus-visible,.backlink:focus-visible,#search:focus-visible,.mopt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .searchwrap{position:relative;margin-left:auto}
+  #search{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:7px 11px 7px 30px;font-size:12.5px;font-family:inherit;outline:none;width:160px;transition:.2s}
+  #search:focus{border-color:var(--accent);width:200px}
+  .searchwrap::before{content:"⌕";position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px}
+  #matchCount{font-size:11.5px;font-weight:600;color:var(--buy);white-space:nowrap}
+  #detailStatus{position:absolute;z-index:1100;top:74px;left:calc((100% - 388px)/2);transform:translateX(-50%);
+    padding:8px 15px;display:none;align-items:center;gap:9px;font-size:12px;font-weight:600;color:var(--text)}
+  #detailStatus.on{display:flex}
+  #detailStatus .spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.22);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .topbtn{background:linear-gradient(135deg,rgba(251,191,36,.18),rgba(52,211,153,.12));border:1px solid rgba(251,191,36,.4);
+    color:#fcd34d;font-weight:600;font-size:11.5px;font-family:inherit;padding:8px 13px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:.15s}
+  .topbtn:hover{border-color:var(--gold);color:#fde68a}
+  .topbtn.active{background:linear-gradient(135deg,var(--gold),#f0a92a);color:#241a02;border-color:var(--gold)}
+  .ntogwrap{display:flex;align-items:center;gap:9px;margin:2px 0 12px}
+  .ntogwrap>span{font-size:10.5px;color:var(--muted2);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .ntog{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+  .ntog button{background:transparent;color:var(--muted);border:0;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;border-radius:6px;font-family:inherit;transition:.15s}
+  .ntog button:hover{color:var(--text)}
+
+  #legend{position:absolute;z-index:1000;left:14px;bottom:16px;padding:13px 15px;width:236px}
+  #legend .lt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  #legend .bar{height:10px;border-radius:6px;margin:8px 0 5px;background:linear-gradient(90deg,#c2384a,#e0654f,#efab4a,#f2c94c,#9bd069,#46b079,#2a9d6f)}
+  #legend .ends{display:flex;justify-content:space-between;color:var(--muted2);font-size:10.5px;font-weight:500}
+  .qkey{display:flex;gap:13px;margin-top:11px;padding-top:10px;border-top:1px solid var(--line2);color:var(--muted);font-size:10.5px;flex-wrap:wrap}
+  .qdot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+  .q-measured{background:#5b9dff}.q-proxy{background:#fbbf24}.q-curated{background:#c084fc}
+  #legend details{margin-top:10px}
+  #legend summary{cursor:pointer;color:var(--muted);font-size:10.5px;font-weight:600;list-style:none}
+  #legend summary::-webkit-details-marker{display:none}
+  #legend summary::before{content:"▸ ";color:var(--muted2)}
+  #legend details[open] summary::before{content:"▾ "}
+
+  #sidebar{width:388px;height:100%;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;flex-shrink:0;scrollbar-width:thin;scrollbar-color:#2a3543 transparent}
+  #sidebar::-webkit-scrollbar{width:8px}#sidebar::-webkit-scrollbar-thumb{background:#26313f;border-radius:8px}
+  #sidebar.empty .content{display:none}
+  .empty-hint{display:none;padding:48px 26px;color:var(--muted);font-size:13px;line-height:1.7}
+  #sidebar.empty .empty-hint{display:block}
+  .empty-hint .big{font-size:15px;color:var(--text);font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:9px}
+  .empty-hint .big .dot{width:9px;height:9px;border-radius:50%;background:var(--buy);box-shadow:0 0 12px var(--buy)}
+  .empty-hint b{color:var(--text)}
+
+  .backlink{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;padding:14px 22px 0;user-select:none}
+  .backlink:hover{opacity:.8}
+  .sb-head{padding:8px 22px 16px}
+  .sb-head h2{margin:0;font-size:23px;font-weight:800;letter-spacing:-.02em}
+  .sb-head .sub{color:var(--muted);font-size:12px;margin-top:3px;font-weight:500}
+  .sb-head .sub b{color:var(--text);font-weight:700}
+  .rankblend{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:9px}
+  .bchip{font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:7px;background:rgba(91,157,255,.14);border:1px solid rgba(91,157,255,.35);color:#a9ccff}
+  .bnote{font-size:10px;color:var(--muted2);font-weight:500}
+  .badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+  .badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--line);color:var(--muted);background:var(--panel2)}
+  .badge.in{background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.45);color:#6ee7b7}
+  .badge.below{background:rgba(91,157,255,.14);border-color:rgba(91,157,255,.45);color:#a9ccff}
+  .badge.above{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.4);color:#fca5a5}
+  .badge.sweet{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.5);color:#fcd34d}
+
+  .section{padding:18px 22px;border-top:1px solid var(--line2)}
+  .section h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:7px}
+  .section h3 .pill{margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--panel2);color:var(--muted);letter-spacing:0}
+  .note{font-size:11px;color:var(--muted2);margin:2px 0 12px;font-weight:500;line-height:1.5}
+
+  /* neighborhoods */
+  .bestcard{background:linear-gradient(135deg,rgba(251,191,36,.14),rgba(52,211,153,.08));border:1px solid rgba(251,191,36,.4);
+    border-radius:12px;padding:13px 15px;margin-bottom:10px;cursor:pointer;transition:.15s}
+  .bestcard:hover{border-color:var(--gold)}
+  .bestcard .bt{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:700}
+  .bestcard .bt .star{color:var(--gold)}
+  .bestcard .bsub{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .bestcard .chips{margin-top:9px}
+  .hoodlist{display:flex;flex-direction:column;gap:3px}
+  .hood{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
+  .hood:hover{background:var(--panel2)}
+  .hood.sel{background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line)}
+  .hood .rk{font-size:11px;font-weight:700;color:var(--muted2);width:20px;text-align:center;flex-shrink:0;font-variant-numeric:tabular-nums}
+  .hood .hd{min-width:0;flex:1}
+  .hood .hn{font-size:13px;font-weight:600;color:#dde5ef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hood .hn .star{color:var(--gold);font-size:11px}
+  .hood .hsub{font-size:10.5px;color:var(--muted2);margin-top:1px}
+  .hood .ap{text-align:right;font-weight:800;font-size:14px;flex-shrink:0;font-variant-numeric:tabular-nums}
+  .hood .ap small{display:block;font-size:8.5px;color:var(--muted2);font-weight:600;letter-spacing:.4px}
+  .zoomhint{background:rgba(91,157,255,.12);border:1px solid rgba(91,157,255,.35);color:#a9ccff;border-radius:10px;padding:10px 13px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;text-align:center}
+  .zoomhint:hover{border-color:var(--accent);background:rgba(91,157,255,.18)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11px;font-weight:500;padding:4px 9px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);color:#c6d2e0}
+
+  .apprhero{display:flex;align-items:flex-end;gap:14px;margin-top:14px}
+  .apprhero .big{font-size:40px;font-weight:800;line-height:.85;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .apprhero .lbl{font-size:11px;color:var(--muted);font-weight:600;padding-bottom:4px}
+  .apprhero .lbl b{color:var(--text)}
+  .minigrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+  .minigrid .m{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .minigrid .m .mv{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .minigrid .m .ml{font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-top:2px}
+
+  .reasons{display:flex;flex-direction:column;gap:2px}
+  .reason{display:flex;gap:11px;padding:8px 10px;border-radius:10px;align-items:flex-start;transition:background .15s}
+  .reason:hover{background:var(--panel2)}
+  .reason .mk{flex-shrink:0;width:18px;height:18px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:800;margin-top:1px}
+  .reason.buy .mk{background:rgba(52,211,153,.16);color:var(--buy)}
+  .reason.avoid .mk{background:rgba(248,113,113,.15);color:var(--avoid)}
+  .reason .body{font-size:13px;line-height:1.4;color:#dde5ef}
+  .reason .tag{display:flex;align-items:center;gap:5px;color:var(--muted2);font-size:10.5px;margin-top:3px;font-weight:500}
+  .crit{margin:11px 0}
+  .crit .top{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px}
+  .crit .top .lbl{color:#c6d2e0;font-weight:500;display:flex;align-items:center;gap:6px}
+  .crit .top .v{font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
+  .crit .track{height:6px;background:var(--panel2);border-radius:5px;overflow:hidden}
+  .crit .fill{height:100%;border-radius:5px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
+  .spots{display:flex;flex-direction:column;gap:2px}
+  .spot{display:flex;gap:10px;font-size:12.5px;align-items:center;cursor:pointer;padding:7px 10px;border-radius:9px;transition:background .15s}
+  .spot:hover{background:var(--panel2)}
+  .spot .ic{font-size:14px;width:18px;text-align:center;flex-shrink:0}
+  .spot .nm{color:#dde5ef;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .spot .cat{font-size:10px;color:var(--muted2);margin-left:auto;white-space:nowrap;font-weight:500}
+  .kv{display:flex;justify-content:space-between;font-size:12.5px;margin:7px 0;align-items:center}
+  .kv span{color:var(--muted)}.kv b{font-weight:600;font-variant-numeric:tabular-nums}
+  details.fold>summary{cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:700;list-style:none;padding:4px 0}
+  details.fold>summary::-webkit-details-marker{display:none}
+  details.fold>summary::before{content:"▸ ";color:var(--muted2)}
+  details.fold[open]>summary::before{content:"▾ "}
+  .muted{color:var(--muted)} .small{font-size:11px}
+  .weightrow{display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0;color:var(--muted)}.weightrow b{color:var(--text)}
+
+  /* combinable color-by multiselect */
+  .msel{position:relative}
+  .mbtn{display:flex;align-items:center;gap:8px;justify-content:space-between;background:var(--panel2);color:var(--text);
+    border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-size:12.5px;font-weight:500;font-family:inherit;cursor:pointer;min-width:206px}
+  .mbtn:hover{border-color:rgba(255,255,255,.18)}
+  .mbtn .cv{color:var(--muted);font-size:11px}
+  .mpanel{display:none;position:absolute;z-index:1300;top:calc(100% + 7px);left:0;width:272px;max-height:64vh;overflow-y:auto;padding:7px;
+    scrollbar-width:thin;scrollbar-color:#2a3543 transparent}
+  .mpanel.open{display:block}
+  .mpanel::-webkit-scrollbar{width:8px}.mpanel::-webkit-scrollbar-thumb{background:#26313f;border-radius:8px}
+  .mhead{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted2);font-weight:700;padding:8px 9px 4px}
+  .mopt{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:12.5px;color:#dde5ef;transition:background .12s}
+  .mopt:hover{background:var(--panel2)}
+  .mopt .ck{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--muted2);flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:800;color:#06101f}
+  .mopt.on{color:#fff}.mopt.on .ck{background:var(--accent);border-color:var(--accent)}
+  .mfoot{display:flex;align-items:center;justify-content:space-between;padding:9px 9px 4px;margin-top:5px;border-top:1px solid var(--line2);font-size:10.5px;color:var(--muted2)}
+  .mfoot a{color:var(--accent);cursor:pointer;font-weight:600}
+
+  /* town KPI tiles */
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+  .kpi{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 13px 13px;position:relative;overflow:hidden}
+  .kpi .kv{font-size:21px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+  .kpi .kv small{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:0}
+  .kpi .kl{font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:7px}
+  .kpi .ksub{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .kpi .kbar{position:absolute;left:0;bottom:0;height:3px;border-radius:0 2px 0 0}
+
+  /* rentability */
+  .yhero{display:flex;align-items:flex-end;gap:14px;margin-top:8px}
+  .yhero .big{font-size:38px;font-weight:800;line-height:.85;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .yhero .lbl{font-size:11px;color:var(--muted);font-weight:600;padding-bottom:4px}
+  .yhero .lbl b{color:var(--text)}
+  .outlook{display:flex;align-items:center;gap:8px;margin-top:13px;font-size:12px;color:var(--muted)}
+  .otag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px}
+
+  /* local government */
+  .govlinks{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+  .govlink{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:7px 11px;border-radius:9px;
+    background:var(--panel2);border:1px solid var(--line);color:#c6d2e0;text-decoration:none;transition:.15s}
+  .govlink:hover{border-color:var(--accent);color:#fff}
+
+  .leaflet-popup-content-wrapper{background:var(--glass-solid);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
+  .leaflet-popup-content{margin:10px 13px;font-size:12.5px;line-height:1.45}
+  .leaflet-popup-tip{background:var(--glass-solid)}
+  .leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
+  .leaflet-tooltip.tip{background:var(--glass-solid);border:1px solid var(--line);color:var(--text);box-shadow:var(--shadow);border-radius:8px;font-size:12px;font-weight:600;padding:5px 9px}
+  .leaflet-tooltip.tip::before{display:none}
+  .leaflet-tooltip.tip .tv{color:var(--muted);font-weight:700;margin-left:6px}
+  .leaflet-control-zoom{border:none!important;box-shadow:var(--shadow)!important}
+  .leaflet-control-zoom a{background:var(--glass-solid)!important;color:var(--text)!important;border:1px solid var(--line)!important}
+  .leaflet-control-attribution{background:rgba(8,11,17,.7)!important;color:var(--muted2)!important}
+  .leaflet-control-attribution a{color:var(--muted)!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <aside id="sidebar" class="empty">
+    <div class="empty-hint">
+      <div class="big"><span class="dot"></span>Click any town to drill in</div>
+      It zooms into the town and shows its <b>neighborhoods ranked by home-price appreciation</b>,
+      highlights the <b>best ones</b>, plus the town's <b>rentability</b> (landlord yield),
+      <b>local government</b>, 10 reasons to buy / not buy, and cool local spots.<br><br>
+      Color = <b>opportunity</b> score (red → green). Open <b>Color by</b> to recolor by
+      ⚡ future potential, 💰 rentability, or any criterion — <b>tick several to blend them</b>.
+    </div>
+    <div class="content"></div>
+  </aside>
+</div>
+
+<div id="toolbar" class="glass">
+  <div id="brand"><div class="logo" aria-hidden="true">🏠</div>
+    <div class="t">MA Opportunity Map<small>First-home appreciation · $400–600k</small></div></div>
+  <div class="field"><label>Color by · combine ✓</label>
+    <div class="msel">
+      <button id="colorBtn" class="mbtn" type="button"><span id="colorBtnLabel">Overall opportunity</span><span class="cv">▾</span></button>
+      <div id="colorPanel" class="mpanel glass"></div>
+    </div></div>
+  <div class="field"><label>Budget</label>
+    <div class="seg" id="budgetSeg">
+      <button data-v="all" class="active">All</button>
+      <button data-v="le600">≤ $600k</button>
+      <button data-v="in">$400–600k</button>
+      <button data-v="sweet">★ Sweet</button>
+    </div></div>
+  <button id="topBtn" class="topbtn">🏘 Best in-budget hoods</button>
+  <span id="matchCount"></span>
+  <div class="searchwrap"><input type="text" id="search" placeholder="Find a town…" aria-label="Find a town" autocomplete="off" /></div>
+</div>
+
+<div id="legend" class="glass">
+  <div class="lt" id="legendTitle">Opportunity score</div>
+  <div id="parcelCtrl" style="display:none;margin:9px 0 4px"></div>
+  <div class="bar"></div>
+  <div class="ends" id="legendEnds"><span>Lower</span><span>Higher</span></div>
+  <div class="qkey" id="qkey">
+    <span><i class="qdot q-measured"></i>measured</span>
+    <span><i class="qdot q-proxy"></i>proxy</span>
+    <span><i class="qdot q-curated"></i>curated</span>
+  </div>
+  <details><summary>How the score is built</summary><div class="small" id="weightsBox" style="margin-top:9px"></div></details>
+</div>
+
+<div id="detailStatus" class="glass"><span class="spin"></span><span id="detailMsg"></span></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const QCLASS={measured:"q-measured",proxy:"q-proxy",curated:"q-curated"};
+const EXTRA_LABEL={budget:"Budget fit",appreciation:"Appreciation & value",trendy:"Trendy / young-buyer demand",future:"Future potential",rentability:"Rentability (landlord)",rent_future:"Rent outlook"};
+// headline color modes shown above the 10 criteria in the combine menu
+const HEAD_MODES=[["composite","Overall opportunity"],["future","⚡ Future potential"],["rentability","💰 Rentability (landlord)"],["rent_future","📈 Rent outlook"]];
+const CAT_ICON={"Beach":"🏖️","Museum":"🏛️","Theater":"🎭","Arts center":"🎨","Gallery":"🖼️","Brewery":"🍺","Nature reserve":"🌲","Park":"🌳","Scenic view":"🌄","Historic site":"🏰","Attraction":"⭐","Garden":"🌷","Marina":"⛵","Market":"🛒","Cafe":"☕","Restaurant":"🍽️","Bar":"🍸"};
+const COUNTY={"001":"Barnstable","003":"Berkshire","005":"Bristol","007":"Dukes","009":"Essex","011":"Franklin","013":"Hampden","015":"Hampshire","017":"Middlesex","019":"Nantucket","021":"Norfolk","023":"Plymouth","025":"Suffolk","027":"Worcester"};
+
+const STOPS=[[0,[194,56,74]],[20,[224,101,79]],[40,[239,171,74]],[55,[242,201,76]],[70,[155,208,105]],[85,[70,176,121]],[100,[42,157,111]]];
+function ramp(v){v=Math.max(0,Math.min(100,v));for(let i=1;i<STOPS.length;i++){if(v<=STOPS[i][0]){const[a,ca]=STOPS[i-1],[b,cb]=STOPS[i],t=(v-a)/(b-a);const c=ca.map((x,k)=>Math.round(x+(cb[k]-x)*t));return`rgb(${c[0]},${c[1]},${c[2]})`;}}return"rgb(42,157,111)";}
+// appreciation %: map ~25..75% onto the ramp; null -> gray
+function apprColor(v){if(v==null)return"#3a4453";return ramp((v-25)/50*100);}
+
+let MAP,LAYER,META,MARKERS,colorModes=["composite"],budget="all";
+let NEIGH_BY_TOWN={},neighLayer=null,HOODLAYERS={},view="state",SELTOWN=null,SELHOOD=null,townLayerByGeoid={};
+let TOWN_PROPS={},neighColorMode="appr",topLayer=null,TOWN_DETAIL={},NEIGH_DETAIL={};
+
+const map=MAP=L.map("map",{preferCanvas:true,zoomControl:true}).setView([42.15,-71.7],8.3);
+L.tileLayer("https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_nolabels/{z}/{x}/{y}{r}.png",{subdomains:"abcd",maxZoom:19,attribution:'&copy; OpenStreetMap &copy; CARTO'}).addTo(map);
+const labels=L.tileLayer("https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_only_labels/{z}/{x}/{y}{r}.png",{subdomains:"abcd",maxZoom:19,pane:"shadowPane",opacity:.45}).addTo(map);
+MARKERS=L.layerGroup().addTo(map);
+
+function catLabel(c){return META.labels[c]||EXTRA_LABEL[c]||c;}
+function metricVal(p,k){
+  if(k==="composite")return p.composite;
+  if(k==="future")return p.future??50;
+  if(k==="rentability")return p.rentability??50;
+  if(k==="rent_future")return p.rent_future??50;
+  return (p.scores&&p.scores[k])??0;
+}
+function valueFor(p){let s=0;for(const k of colorModes)s+=metricVal(p,k);return s/colorModes.length;}
+function colorLabel(){if(colorModes.length===1){const k=colorModes[0];return k==="composite"?"Opportunity score":catLabel(k);}return "Combined · "+colorModes.length+" factors";}
+function colorShort(){if(colorModes.length===1){const k=colorModes[0];return k==="composite"?"Score":catLabel(k).split(" ")[0];}return "Blend";}
+function matchesBudget(p){if(budget==="all")return true;if(budget==="le600")return p.budget_fit==="in"||p.budget_fit==="below";if(budget==="in")return p.budget_fit==="in";if(budget==="sweet")return p.sweet_spot;return true;}
+function styleFor(f){const p=f.properties,on=matchesBudget(p),fil=(budget!=="all"),gold=fil&&p.sweet_spot;
+  return{fillColor:ramp(valueFor(p)),fillOpacity:on?.88:.045,color:gold?"#fbbf24":(on&&fil?"#eef4fb":"rgba(8,11,17,.85)"),weight:gold?2.4:(on&&fil?1.1:.5),opacity:on?1:.12};}
+function backdropStyle(f){return{fillColor:ramp(valueFor(f.properties)),fillOpacity:.05,color:"rgba(255,255,255,.05)",weight:.5,opacity:.4};}
+function fmtPrice(v){if(!v)return"n/a";return v<1e6?"$"+Math.round(v/1000)+"k":"$"+(v/1e6).toFixed(2)+"M";}
+function fmtPct(v){return v==null?"n/a":(v>=0?"+":"")+v+"%";}
+function apTxt(b){return b.appr5==null?"n/a":(b.appr_est?"~":"")+fmtPct(b.appr5);}
+
+function setLegend(mode){
+  const t=document.getElementById("legendTitle"),e=document.getElementById("legendEnds"),q=document.getElementById("qkey");
+  document.querySelector("#legend .bar").style.background="";
+  if(mode==="appr"){t.textContent="5-yr home-price appreciation";e.innerHTML="<span>≤30%</span><span>≥70%</span>";q.style.display="none";}
+  else{t.textContent=colorLabel();e.innerHTML="<span>Lower</span><span>Higher</span>";q.style.display=colorModes.length===1&&colorModes[0]!=="composite"&&colorModes[0]!=="future"&&colorModes[0]!=="rentability"&&colorModes[0]!=="rent_future"?"":"none";}
+}
+function render(){if(!LAYER)return;LAYER.setStyle(view==="state"?styleFor:backdropStyle);
+  if(view==="state"){setLegend("score");const lbl=colorShort();
+    LAYER.eachLayer(l=>l.setTooltipContent(`<b>${l.feature.properties.name}</b><span class="tv">${lbl} ${Math.round(valueFor(l.feature.properties))}</span>`));}}
+
+/* ---------------- town drill-in ---------------- */
+async function drillIn(tp){
+  view="town";SELTOWN=tp;SELHOOD=null;
+  document.getElementById("topBtn").classList.remove("active");
+  clearDetail(false);
+  if(topLayer){map.removeLayer(topLayer);topLayer=null;}
+  LAYER.setStyle(backdropStyle);
+  const tl=townLayerByGeoid[tp.geoid];if(tl){tl.setStyle({fillOpacity:0,color:"#ffffff",weight:1.5,opacity:.9});tl.bringToFront();}
+  if(neighLayer){map.removeLayer(neighLayer);neighLayer=null;}HOODLAYERS={};MARKERS.clearLayers();
+  if(tl)map.flyToBounds(tl.getBounds(),{padding:[50,50],maxZoom:14,duration:.7});
+  if(!dataReady){renderTownPanel(tp,NEIGH_BY_TOWN[tp.geoid]||[]);   // header/KPIs/rentability/gov paint while data streams in
+    detailStatus("Loading neighborhoods…");await ensureData();detailStatus("");if(SELTOWN!==tp)return;}
+  const hoods=NEIGH_BY_TOWN[tp.geoid]||[];
+  if(hoods.length){
+    neighLayer=L.geoJSON({type:"FeatureCollection",features:hoods},{style:hoodStyle,onEachFeature:(f,l)=>{
+      const p=f.properties;HOODLAYERS[p.name]=l;
+      l.bindTooltip(`<b>${esch(p.name)}</b><span class="tv">${p.appr5!=null?fmtPct(p.appr5)+" 5yr":"appr n/a"}</span>`,{sticky:true,className:"tip",opacity:1});
+      l.on("mouseover",()=>{if(!isSel(p))l.setStyle({weight:2,color:"#cdd8e6"});});
+      l.on("mouseout",()=>{if(!isSel(p))neighLayer.resetStyle(l);});
+      l.on("click",()=>selectHood(p));
+    }}).addTo(map);
+  }
+  updateNeighLegend();
+  if(!tl&&neighLayer)map.flyToBounds(neighLayer.getBounds(),{padding:[50,50],maxZoom:14,duration:.7});
+  renderTownPanel(tp,hoods);  // re-render now that neighborhoods + detail are in
+}
+function isSel(p){return SELHOOD&&SELHOOD.name===p.name&&SELHOOD.town_geoid===p.town_geoid;}
+function hoodColor(p){if(neighColorMode==="appr")return apprColor(p.appr5);if(neighColorMode==="future")return ramp(p.future??50);return ramp(p.score);}
+function hoodStyle(f){const p=f.properties,sel=isSel(p);
+  return{fillColor:hoodColor(p),fillOpacity:sel?.9:.8,color:sel?"#ffffff":(p.is_best?"#fbbf24":"rgba(8,11,17,.55)"),weight:sel?2.6:(p.is_best?2.2:.8)};}
+function topHoodStyle(f){return{fillColor:hoodColor(f.properties),fillOpacity:.85,color:"#fbbf24",weight:1.3};}
+function updateNeighLegend(){
+  const t=document.getElementById("legendTitle"),e=document.getElementById("legendEnds"),q=document.getElementById("qkey");
+  document.querySelector("#legend .bar").style.background="";
+  q.style.display="none";
+  if(neighColorMode==="appr"){t.textContent="5-yr home-price appreciation";e.innerHTML="<span>≤30%</span><span>≥70%</span>";}
+  else if(neighColorMode==="future"){t.textContent="Neighborhood future potential";e.innerHTML="<span>Lower</span><span>Higher</span>";}
+  else{t.textContent="Neighborhood opportunity";e.innerHTML="<span>Lower</span><span>Higher</span>";}
+}
+function setNeighColor(m){neighColorMode=m;if(neighLayer)neighLayer.setStyle(hoodStyle);if(topLayer)topLayer.setStyle(topHoodStyle);
+  if(SELHOOD&&HOODLAYERS[SELHOOD.name])HOODLAYERS[SELHOOD.name].setStyle({color:"#fff",weight:2.6,fillOpacity:.92});
+  updateNeighLegend();
+  document.querySelectorAll(".ntog button").forEach(b=>b.classList.toggle("active",b.dataset.m===m));}
+
+function drillOut(){
+  view="state";SELTOWN=null;SELHOOD=null;
+  clearDetail(false);
+  if(neighLayer){map.removeLayer(neighLayer);neighLayer=null;}
+  if(topLayer){map.removeLayer(topLayer);topLayer=null;}
+  HOODLAYERS={};MARKERS.clearLayers();
+  LAYER.setStyle(styleFor);setLegend("score");
+  document.getElementById("topBtn").classList.remove("active");
+  renderStateRanking();
+  map.flyTo([42.15,-71.7],8.3,{duration:.6});
+}
+
+/* ---------------- best in-budget neighborhoods statewide ---------------- */
+async function showTopHoods(){
+  view="tophoods";SELTOWN=null;SELHOOD=null;
+  if(neighLayer){map.removeLayer(neighLayer);neighLayer=null;}
+  if(topLayer){map.removeLayer(topLayer);topLayer=null;}
+  HOODLAYERS={};MARKERS.clearLayers();
+  LAYER.setStyle(backdropStyle);
+  if(!dataReady){detailStatus("Loading neighborhoods…");await ensureData();detailStatus("");if(view!=="tophoods")return;}
+  let all=[];
+  Object.values(NEIGH_BY_TOWN).forEach(arr=>arr.forEach(f=>{
+    const tp=TOWN_PROPS[f.properties.town_geoid];
+    if(tp&&(tp.budget_fit==="in"||tp.budget_fit==="below"))all.push(f);
+  }));
+  all.sort((a,b)=>b.properties.score-a.properties.score);
+  const top=all.slice(0,40);
+  topLayer=L.geoJSON({type:"FeatureCollection",features:top},{style:topHoodStyle,onEachFeature:(f,l)=>{
+    const p=f.properties;
+    l.bindTooltip(`<b>${p.name}</b> · ${p.town_name}<span class="tv">${p.appr5!=null?fmtPct(p.appr5):"n/a"}</span>`,{sticky:true,className:"tip",opacity:1});
+    l.on("click",()=>{const tp=TOWN_PROPS[p.town_geoid];drillIn(tp);const hp=HOODby(p.town_geoid,p.name);if(hp)selectHood(hp);});
+  }}).addTo(map);
+  updateNeighLegend();
+  document.getElementById("topBtn").classList.add("active");
+  map.flyTo([42.1,-71.6],8.2,{duration:.6});
+  renderTopPanel(top);
+}
+function HOODby(geoid,name){const f=(NEIGH_BY_TOWN[geoid]||[]).find(x=>x.properties.name===name);return f?f.properties:null;}
+function renderTopPanel(top){
+  const sb=document.getElementById("sidebar");sb.classList.remove("empty");
+  let h=`<div class="backlink" onclick="drillOut()">← All of Massachusetts</div>
+   <div class="sb-head"><h2>Best in-budget<br>neighborhoods</h2>
+     <div class="sub">Top ${top.length} across MA towns where a typical home is ≤ $600k · ranked by appreciation-tilted opportunity</div></div>
+   <div class="section"><div class="hoodlist">`+
+   top.map((f,i)=>{const b=f.properties;
+     return `<div class="hood" onclick="(function(){const tp=TOWN_PROPS['${b.town_geoid}'];drillIn(tp);const hp=HOODby('${b.town_geoid}','${esc(b.name)}');if(hp)selectHood(hp);})()">
+       <div class="rk">${i+1}</div>
+       <div class="hd"><div class="hn">${b.name} ${b.is_best?'<span class="star">★</span>':""}</div>
+         <div class="hsub">${b.town_name} · score ${b.score}</div></div>
+       <div class="ap" style="color:${apprColor(b.appr5)}">${apTxt(b)}<small>5-YR</small></div></div>`;}).join("")
+   +`</div></div>
+   <div class="section"><div class="note">"In budget" = the town's typical Zillow home value is ≤ $600k. Neighborhood appreciation is the FHFA tract index. Tap any row to drill into it.</div></div>`;
+  sb.querySelector(".content").innerHTML=h;sb.scrollTop=0;
+}
+
+/* ---------------- statewide town leaderboard (shown in state view) ---------------- */
+function hiTown(gid,on){const l=townLayerByGeoid[gid];if(l&&view==="state")l.setStyle(on?{weight:2,color:"#fff",fillOpacity:.95}:styleFor(l.feature));}
+function renderStateRanking(){
+  if(!META)return;
+  const sb=document.getElementById("sidebar");sb.classList.remove("empty");
+  const fitTxt={in:"in budget",below:"under budget",above:"over budget",unknown:"price n/a"};
+  const rows=Object.values(TOWN_PROPS).filter(matchesBudget).sort((a,b)=>valueFor(b)-valueFor(a));
+  const lbl=colorLabel(),multi=colorModes.length>1;
+  let h=`<div class="sb-head" style="padding-top:18px"><h2>MA towns ranked</h2>
+     <div class="sub">by <b>${esch(lbl)}</b> · best → worst · ${rows.length} ${budget==="all"?"towns":"in filter"}</div>
+     ${multi?`<div class="rankblend">${colorModes.map(k=>`<span class="bchip">${esch(catLabel(k).replace("Opportunity score","Overall opportunity"))}</span>`).join("")}<span class="bnote">averaged evenly</span></div>`:""}</div>
+   <div class="section" style="padding-top:6px"><div class="hoodlist">`+
+   rows.map((p,i)=>{const v=Math.round(valueFor(p));
+     return `<div class="hood" onmouseenter="hiTown('${p.geoid}',1)" onmouseleave="hiTown('${p.geoid}',0)" onclick="drillIn(TOWN_PROPS['${p.geoid}'])">
+       <div class="rk">${i+1}</div>
+       <div class="hd"><div class="hn">${esch(p.name)}${p.sweet_spot?' <span class="star">★</span>':""}</div>
+         <div class="hsub">${fmtPrice(p.price)} · ${fitTxt[p.budget_fit]}</div></div>
+       <div class="ap" style="color:${ramp(v)}">${v}<small>${multi?"BLEND":"SCORE"}</small></div></div>`;}).join("")
+   +`</div></div>
+   <div class="section"><div class="note">Ranked by your <b>Color by</b> selection${multi?" (the evenly-blended score)":""}. Click a town to drill into its neighborhoods, rentability &amp; local government.</div></div>`;
+  sb.querySelector(".content").innerHTML=h;sb.scrollTop=0;
+}
+
+function hoodSpots(p){return NEIGH_DETAIL[p.town_geoid+"|"+p.name]||[];}
+function selectHood(p){
+  SELHOOD=p;view="neighborhood";
+  clearDetail(false);              // drop any zoomed-in parcels/streets from the prior hood
+  if(neighLayer)neighLayer.setStyle(hoodStyle);
+  const l=HOODLAYERS[p.name];if(l){l.bringToFront();l.setStyle({color:"#fff",weight:2.6,fillOpacity:.92});map.flyToBounds(l.getBounds(),{padding:[70,70],maxZoom:15,duration:.6});}
+  MARKERS.clearLayers();
+  hoodSpots(p).forEach(s=>L.circleMarker([s.lat,s.lon],{radius:5,color:"#0b0f14",weight:1.5,fillColor:"#fbbf24",fillOpacity:.95}).bindPopup(`<b>${CAT_ICON[s.cat]||"📍"} ${esch(s.name)}</b><br><span class="muted">${s.cat}</span>`).addTo(MARKERS));
+  renderHoodDetail(p);
+}
+
+/* ---------------- panels ---------------- */
+function chip(txt){return `<span class="chip">${esch(txt)}</span>`;}
+function reasonRow(r,k){return `<div class="reason ${k}"><div class="mk">${k==="buy"?"✓":"✕"}</div><div><div class="body">${esch(r.text)}</div><div class="tag"><i class="qdot ${QCLASS[r.q]}"></i>${esch(catLabel(r.cat))}</div></div></div>`;}
+function critBar(key,val,q){return `<div class="crit"><div class="top"><span class="lbl"><i class="qdot ${QCLASS[q]}"></i>${esch(META.labels[key])}</span><span class="v" style="color:${ramp(val)}">${val.toFixed(0)}</span></div><div class="track"><div class="fill" style="width:${val}%;background:${ramp(val)}"></div></div></div>`;}
+function scoreBar(label,val){return `<div class="crit"><div class="top"><span class="lbl">${label}</span><span class="v" style="color:${ramp(val)}">${Math.round(val)}</span></div><div class="track"><div class="fill" style="width:${val}%;background:${ramp(val)}"></div></div></div>`;}
+function yieldColor(y){if(y==null)return"#3a4453";return ramp((y-3)/4*100);}
+function outlookOf(v){if(v>=75)return{l:"Strong",c:"var(--buy)",bg:"rgba(52,211,153,.16)"};if(v>=50)return{l:"Moderate",c:"#a9ccff",bg:"rgba(91,157,255,.16)"};if(v>=30)return{l:"Soft",c:"#fcd34d",bg:"rgba(251,191,36,.16)"};return{l:"Weak",c:"#fca5a5",bg:"rgba(248,113,113,.14)"};}
+function budgetColor(fit){return fit==="in"?"var(--buy)":fit==="below"?"var(--accent)":fit==="above"?"var(--avoid)":"var(--muted2)";}
+
+function renderTownPanel(p,hoods){
+  const sb=document.getElementById("sidebar");sb.classList.remove("empty");
+  const fit={in:"In budget",below:"Under budget",above:"Over budget",unknown:"Price n/a"}[p.budget_fit];
+  const ranked=[...hoods].sort((a,b)=>a.properties.rank_in_town-b.properties.rank_in_town);
+  const det=TOWN_DETAIL[p.geoid]||{},rb=det.reasons_buy||[],ra=det.reasons_avoid||[],cs=det.cool_spots||[];
+
+  let h=`<div class="backlink" onclick="drillOut()">← All of Massachusetts</div>
+   <div class="sb-head"><h2>${esch(p.name)}</h2>
+     <div class="sub">${(COUNTY[p.county]||"")} County · pop ${(p.pop2020||0).toLocaleString()} · ${p.gov?esch(p.gov.form):""}</div>
+     <div class="kpis">
+       <div class="kpi"><div class="kv" style="color:${ramp(p.composite)}">#${p.rank}<small> / ${META.n_towns}</small></div><div class="kl">Opportunity</div><div class="ksub">${p.pctl}th percentile</div><div class="kbar" style="width:${p.pctl}%;background:${ramp(p.composite)}"></div></div>
+       <div class="kpi"><div class="kv" style="color:${ramp(p.future)}">${Math.round(p.future)}</div><div class="kl">⚡ Future potential</div><div class="ksub">next ~5 yrs</div><div class="kbar" style="width:${p.future}%;background:${ramp(p.future)}"></div></div>
+       <div class="kpi"><div class="kv" style="color:${ramp(p.rentability)}">${Math.round(p.rentability)}</div><div class="kl">💰 Rentability</div><div class="ksub">${p.gross_yield}% gross yield</div><div class="kbar" style="width:${p.rentability}%;background:${ramp(p.rentability)}"></div></div>
+       <div class="kpi"><div class="kv" style="color:${budgetColor(p.budget_fit)}">${fmtPrice(p.price)}</div><div class="kl">Typical home</div><div class="ksub">${fit}</div><div class="kbar" style="width:100%;background:${budgetColor(p.budget_fit)}"></div></div>
+     </div>
+     <div class="badges"><span class="badge ${p.budget_fit}">${fit}</span>
+       ${p.price_est?`<span class="badge" title="assessed value (Zillow doesn't cover this town)">assessed est.</span>`:""}
+       ${p.sweet_spot?'<span class="badge sweet">★ Sweet spot</span>':""}
+       <span class="badge" title="${p.appr_src||"appreciation"}">5-yr appr ${fmtPct(p.appr5)}</span></div></div>`;
+
+  // landlord rentability (now + forward)
+  const ol=outlookOf(p.rent_future);
+  h+=`<div class="section"><h3>💰 Rentability <span class="pill">landlord view</span></h3>
+    <div class="yhero"><div class="big" style="color:${yieldColor(p.gross_yield)}">${p.gross_yield}%</div>
+      <div class="lbl">gross rental yield<br>~$${(p.rent||0).toLocaleString()}/mo typical rent${p.rent_est?" · est.":""}</div></div>
+    <div style="margin-top:14px">${scoreBar("Rentability now — yield + demand",p.rentability)}</div>
+    <div class="outlook"><span class="otag" style="color:${ol.c};background:${ol.bg}">${ol.l}</span><span>5-yr rent outlook · rents ${p.rent_growth3_est?"~":""}${fmtPct(p.rent_growth3)} over 3 yrs</span></div>
+    <div class="note">Yield = annual rent ÷ typical home value. Rentability blends yield with rental demand (universities, transit, jobs, walkability). ${p.rent_est?"Rent estimated from county yield (Zillow has no local rent index here).":"Rent from the Zillow Observed Rent Index."}${p.rent_growth3_est?" 3-yr rent change shown with ~ is a county estimate (no local rent history).":""}</div></div>`;
+
+  // local government
+  if(p.gov){h+=`<div class="section"><h3>🏛 Local government</h3>
+    <div class="kv"><span>Form of government</span><b>${esch(p.gov.form)}</b></div>
+    <div class="kv"><span>County</span><b>${(COUNTY[p.county]||"")} County</b></div>
+    <div class="govlinks">
+      <a class="govlink" href="${p.gov.site}" target="_blank" rel="noopener">🌐 Official site</a>
+      <a class="govlink" href="${p.gov.wiki}" target="_blank" rel="noopener">📖 Overview</a>
+      <a class="govlink" href="${p.gov.budget}" target="_blank" rel="noopener">💵 Tax &amp; budget</a></div>
+    <div class="note">Form is a curated general classification — the official site is authoritative for charter specifics.</div></div>`;}
+
+  if(ranked.length>=2){
+    const best=ranked[0].properties;
+    h+=`<div class="section"><h3>Best neighborhood${ranked.length>2?"s":""}</h3>
+      <div class="bestcard" onclick="selectHood(HOOD('${esc(best.name)}'))">
+        <div class="bt"><span class="star">★</span> ${esch(best.name)}
+          <span style="margin-left:auto;color:${apprColor(best.appr5)};font-weight:800">${apTxt(best)}<small style="color:var(--muted2);font-weight:600;font-size:9px"> 5yr</small></span></div>
+        <div class="bsub">Top of ${best.n_in_town} neighborhoods · score ${best.score}</div>
+        ${best.rent_est?`<div class="bsub" style="margin-top:3px">💰 ~$${best.rent_est.toLocaleString()}/mo est. rent · ${esch(best.renter_profile||"")}</div>`:""}
+        <div class="chips" style="margin-top:8px">${(best.insights||[]).slice(0,3).map(chip).join("")}</div></div>`;
+    ranked.slice(1,3).forEach(r=>{const b=r.properties;
+      h+=`<div class="bestcard" style="background:var(--panel2);border-color:var(--line)" onclick="selectHood(HOOD('${esc(b.name)}'))">
+        <div class="bt" style="font-size:13px">${b.rank_in_town}. ${b.name}
+          <span style="margin-left:auto;color:${apprColor(b.appr5)};font-weight:800">${apTxt(b)}<small style="color:var(--muted2);font-weight:600;font-size:9px"> 5yr</small></span></div>
+        <div class="bsub">score ${b.score}${b.insights&&b.insights[0]?" · "+b.insights[0]:""}</div></div>`;});
+    h+=`</div>`;
+
+    h+=`<div class="section"><h3>All neighborhoods<span class="pill">${ranked.length}</span></h3>
+      <div class="ntogwrap"><span>Map color</span><div class="ntog">
+        <button data-m="appr" class="${neighColorMode==="appr"?"active":""}" onclick="setNeighColor('appr')">Appreciation</button>
+        <button data-m="future" class="${neighColorMode==="future"?"active":""}" onclick="setNeighColor('future')">⚡ Future</button>
+        <button data-m="score" class="${neighColorMode==="score"?"active":""}" onclick="setNeighColor('score')">Opportunity</button></div></div>
+      <div class="hoodlist">`+ranked.map(r=>{const b=r.properties;
+        return `<div class="hood" onclick="selectHood(HOOD('${esc(b.name)}'))">
+          <div class="rk">${b.rank_in_town}</div>
+          <div class="hd"><div class="hn">${b.name} ${b.is_best?'<span class="star">★</span>':""}</div>
+            <div class="hsub">score ${b.score}${b.density?" · ~"+b.density.toLocaleString()+"/sq mi":""}</div></div>
+          <div class="ap" style="color:${apprColor(b.appr5)}">${apTxt(b)}<small>5-YR</small></div></div>`;}).join("")
+      +`</div></div>`;
+  } else if(ranked.length===1){
+    const b=ranked[0].properties;
+    h+=`<div class="section"><h3>Neighborhood</h3><div class="note">This town is a single market area.</div>
+      <div class="hood" onclick="selectHood(HOOD('${esc(b.name)}'))"><div class="rk">1</div>
+       <div class="hd"><div class="hn">${b.name}</div><div class="hsub">score ${b.score}</div></div>
+       <div class="ap" style="color:${apprColor(b.appr5)}">${apTxt(b)}<small>5-YR</small></div></div></div>`;
+  } else {
+    h+=`<div class="section"><h3>Neighborhoods</h3><div class="note">Tract-level appreciation data isn't available for this town. Town-level insights below.</div></div>`;
+  }
+
+  // town reasons + criteria + spots (folded) — reasons/spots come from the lazy detail file
+  const rzn=(rb.length||ra.length)
+    ? `<div class="note">✓ ${rb.length} reasons to buy · ✕ ${ra.length} to avoid</div>
+       <div class="reasons">${rb.map(r=>reasonRow(r,"buy")).join("")}${ra.map(r=>reasonRow(r,"avoid")).join("")}</div>`
+    : `<div class="note">${dataReady?"No reasons available.":"Loading…"}</div>`;
+  h+=`<div class="section"><details class="fold" open><summary>Why buy / not buy ${esch(p.name)}</summary>
+    <div style="margin-top:10px">${rzn}</div></details></div>`;
+  h+=`<div class="section"><details class="fold"><summary>Town scorecard · 10 criteria</summary>
+    <div style="margin-top:10px">${Object.keys(META.weights).map(k=>critBar(k,p.scores[k],META.quality[k])).join("")}</div></details></div>`;
+  h+=`<div class="section"><details class="fold"><summary>Cool spots in ${esch(p.name)}</summary>
+    <div class="spots" style="margin-top:8px">${cs.map(s=>`<div class="spot"><span class="ic">${CAT_ICON[s.cat]||"📍"}</span><span class="nm">${esch(s.name)}</span><span class="cat">${s.cat}</span></div>`).join("")||`<div class="note">${dataReady?"None mapped.":"Loading…"}</div>`}</div></details></div>`;
+
+  sb.querySelector(".content").innerHTML=h;sb.scrollTop=0;
+}
+
+function renderHoodDetail(b){
+  const sb=document.getElementById("sidebar");sb.classList.remove("empty");
+  const yr=b.latest_year||"";
+  let h=`<div class="backlink" onclick="backToTown()">← ${b.town_name} neighborhoods</div>
+   <div class="sb-head"><h2>${esch(b.name)} ${b.is_best?'<span style="color:var(--gold);font-size:18px">★</span>':""}</h2>
+     <div class="sub">${esch(b.town_name)} · #${b.rank_in_town} of ${b.n_in_town} · pop ${(b.pop||0).toLocaleString()}</div>
+     <div class="apprhero"><div class="big" style="color:${apprColor(b.appr5)}">${apTxt(b)}</div>
+       <div class="lbl">home-price growth<br><b>past 5 years</b>${yr?` · thru ${yr}`:""}${b.appr_est?" · est.":""}</div></div>
+     <div class="minigrid">
+       <div class="m"><div class="mv" style="color:${apprColor(b.appr1*5)}">${b.appr_est?"~":""}${fmtPct(b.appr1)}</div><div class="ml">1-yr</div></div>
+       <div class="m"><div class="mv" style="color:${apprColor(b.appr10/2)}">${b.appr_est?"~":""}${fmtPct(b.appr10)}</div><div class="ml">10-yr</div></div>
+       <div class="m"><div class="mv" style="color:${ramp(b.score)}">${b.score}</div><div class="ml">opp. score</div></div>
+     </div></div>`;
+
+  h+=`<div class="section" style="padding-bottom:8px"><div class="zoomhint" onclick="zoomToParcels()">🔍 Zoom in: every home's est. market value, ideal buy price &amp; ⭐ deal score</div></div>`;
+
+  // per-neighborhood rent snapshot (rent varies block to block)
+  const trent=(TOWN_PROPS[b.town_geoid]||{}).rent, dem=outlookOf(b.rent_demand||50);
+  h+=`<div class="section"><h3>💰 Rent here <span class="pill">est.</span></h3>
+    <div class="yhero"><div class="big" style="color:${ramp(b.rent_demand||50)}">~$${(b.rent_est||0).toLocaleString()}</div>
+      <div class="lbl">est. monthly rent<br><b>${(b.rent_vs_town>=0?"+":"")+(b.rent_vs_town||0)}%</b> vs ${esch(b.town_name)} avg${trent?` (~$${trent.toLocaleString()}/mo)`:""}</div></div>
+    <div style="margin-top:12px">${scoreBar("Rental demand here",b.rent_demand||50)}</div>
+    <div class="outlook"><span class="otag" style="color:${dem.c};background:${dem.bg}">${dem.l}</span><span>${esch(b.renter_profile||"Mixed renters")}</span></div>
+    <div class="note">Estimated from ${esch(b.town_name)}'s Zillow rent scaled by this area's transit access, walkability, university pull &amp; appreciation — rents vary block to block, so treat it as a relative signal, not a quote.</div></div>`;
+
+  h+=`<div class="section" id="valsec"><h3>🏷 Home values &amp; deals here <span class="pill">est.</span></h3><div id="valbody" class="note">Estimating from assessor parcels…</div></div>`;
+
+  h+=`<div class="section"><h3>What this neighborhood is like</h3>
+    <div class="chips">${(b.insights||[]).map(chip).join("")||'<span class="note">Limited data for this area.</span>'}</div></div>`;
+
+  h+=`<div class="section" id="streetsec"><h3>🛣 Streets &amp; character</h3><div id="streetsbody" class="note">Loading streets…</div></div>`;
+
+  h+=`<div class="section"><h3>The numbers</h3>
+    <div class="kv"><span>Appreciation rank in ${b.town_name}</span><b>#${b.rank_in_town} of ${b.n_in_town}</b></div>
+    <div class="kv"><span>Walkability (density)</span><b>${b.density?b.density.toLocaleString()+"/sq mi":"n/a"}</b></div>
+    <div class="kv"><span>Nearest MBTA station</span><b>${b.station_nm?b.station_mi+" mi · "+b.station_nm:"—"}</b></div>
+    <div class="kv"><span>Nearest university</span><b>${b.uni_nm} · ${b.uni_mi} mi</b></div></div>`;
+
+  const hs=hoodSpots(b);
+  if(hs.length){
+    h+=`<div class="section"><h3>Cool spots here</h3><div class="spots">`+hs.map((s,i)=>`<div class="spot" onclick="map.panTo([${s.lat},${s.lon}])"><span class="ic">${CAT_ICON[s.cat]||"📍"}</span><span class="nm">${esch(s.name)}</span><span class="cat">${s.cat}</span></div>`).join("")+`</div></div>`;
+  }
+  h+=`<div class="section"><div class="note">Appreciation = FHFA repeat-sales House Price Index for this area's census tract(s).${b.appr_est?" <b>~</b> = FHFA suppressed this tract, so figures are estimated from the town/county." : ""} Insights from OpenStreetMap, MBTA &amp; Census. A research signal, not an appraisal.</div></div>`;
+  sb.querySelector(".content").innerHTML=h;sb.scrollTop=0;
+  fetchHoodStreets(b);   // live OSM street names for this neighborhood
+  fetchHoodValues(b);    // live assessor-based home values + deals for this neighborhood
+}
+
+/* ---- live named streets within a neighborhood (clipped to its polygon) ---- */
+const HOOD_STREETS={};
+function pointInGeom(geom,x,y){
+  const rc=(ring)=>{let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];if(((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;}return inside;};
+  const polys=geom.type==="Polygon"?[geom.coordinates]:geom.type==="MultiPolygon"?geom.coordinates:[];
+  for(const poly of polys){if(poly[0]&&rc(poly[0])&&!poly.slice(1).some(hh=>rc(hh)))return true;}
+  return false;
+}
+function wayLen(g){let s=0;for(let i=1;i<g.length;i++)s+=Math.hypot(g[i].lon-g[i-1].lon,g[i].lat-g[i-1].lat);return s;}
+function renderStreets(d){
+  const el=document.getElementById("streetsbody");if(!el)return;
+  const main=d.main.slice(0,5),res=d.res.slice(0,8);
+  if(!main.length&&!res.length){el.textContent="No named streets mapped in this area.";return;}
+  let h="";
+  if(main.length)h+=`<div class="kv"><span>Main streets</span><b style="text-align:right;max-width:64%">${main.map(esch).join(", ")}</b></div>`;
+  if(res.length)h+=`<div class="kv"><span>Residential</span><b style="text-align:right;max-width:64%">${res.map(esch).join(", ")}${d.res.length>res.length?` +${d.res.length-res.length} more`:""}</b></div>`;
+  const feel=(main.length&&d.res.length>=6)?`<b>${esch(d.main[0])}</b> is the spine; the rest are quiet residential side streets.`
+    :(d.res.length>=6)?"A quiet, mostly residential street grid."
+    :main.length?`Built around <b>${esch(d.main[0])}</b>.`:"A small set of local streets.";
+  h+=`<div class="note" style="margin-top:8px">${feel}</div>`;
+  el.innerHTML=h;
+}
+async function fetchHoodStreets(b){
+  const key=b.town_geoid+"|"+b.name;
+  if(HOOD_STREETS[key]){renderStreets(HOOD_STREETS[key]);return;}
+  const feat=(NEIGH_BY_TOWN[b.town_geoid]||[]).find(x=>x.properties.name===b.name),l=HOODLAYERS[b.name];
+  const body=()=>document.getElementById("streetsbody");
+  if(!feat||!l){if(body())body().textContent="Street data unavailable here.";return;}
+  const bn=l.getBounds();
+  const q=`[out:json][timeout:25];way["highway"~"^(primary|secondary|tertiary|residential|living_street|unclassified|trunk)$"]["name"](${bn.getSouth()},${bn.getWest()},${bn.getNorth()},${bn.getEast()});out geom tags;`;
+  try{
+    const sd=await (await fetch(OVERPASS_URL+"?data="+encodeURIComponent(q))).json();
+    const main={},res={};
+    (sd.elements||[]).forEach(w=>{
+      if(!w.geometry||w.geometry.length<2||!w.tags||!w.tags.name)return;
+      const m=w.geometry[Math.floor(w.geometry.length/2)];
+      if(!pointInGeom(feat.geometry,m.lon,m.lat))return;     // keep only streets inside the polygon
+      const bucket=(w.tags.highway==="residential"||w.tags.highway==="living_street")?res:main;
+      bucket[w.tags.name]=(bucket[w.tags.name]||0)+wayLen(w.geometry);
+    });
+    const byLen=o=>Object.keys(o).sort((a,c)=>o[c]-o[a]);
+    const data={main:byLen(main),res:byLen(res)};
+    HOOD_STREETS[key]=data;
+    if(SELHOOD&&(SELHOOD.town_geoid+"|"+SELHOOD.name)===key)renderStreets(data);
+  }catch(e){if(body())body().textContent="Couldn't load streets for this area right now.";}
+}
+
+/* ---- live assessor-based home values + deal finder for a neighborhood ---- */
+const HOOD_VALUES={};
+function renderHoodValues(d){
+  const el=document.getElementById("valbody");if(!el)return;
+  if(!d||!d.n){el.textContent="No assessor parcels found for this area.";return;}
+  let h=`<div class="kv"><span>Typical home value (est.)</span><b>~$${Math.round(d.medMarket).toLocaleString()}</b></div>
+    <div class="kv"><span>Median $/sqft</span><b>~$${Math.round(d.psf).toLocaleString()}</b></div>
+    <div class="kv"><span>Disciplined buy target</span><b style="color:#6ee7b7">~$${Math.round(d.medBuy).toLocaleString()}</b></div>
+    <div class="kv"><span>Homes analyzed</span><b>${d.n.toLocaleString()}</b></div>`;
+  if(d.deals.length){
+    h+=`<div class="note" style="margin-top:11px;color:#fcd34d;font-weight:700">⭐ Top deals to investigate</div><div class="spots">`+
+      d.deals.map(x=>`<div class="spot" onclick="map.flyTo([${x.lat},${x.lon}],17)"><span class="ic">⭐</span><span class="nm">${esch(x.addr)} · ~$${Math.round(x.mv/1000)}k</span><span class="cat">deal ${x.score}</span></div>`).join("")
+      +`</div><div class="note" style="margin-top:5px">${esch(d.deals[0].reason)}</div>`;
+  }
+  h+=`<div class="note" style="margin-top:9px">Est. from MassGIS assessor values rolled to today + local $/sqft comps. Leads to investigate, not appraisals.</div>`;
+  el.innerHTML=h;
+}
+async function fetchHoodValues(b){
+  const key=b.town_geoid+"|"+b.name,body=()=>document.getElementById("valbody");
+  if(HOOD_VALUES[key]){renderHoodValues(HOOD_VALUES[key]);return;}
+  const l=HOODLAYERS[b.name],feat=(NEIGH_BY_TOWN[b.town_geoid]||[]).find(x=>x.properties.name===b.name);
+  if(!l||!feat){if(body())body().textContent="Not available for this area.";return;}
+  const bn=l.getBounds();
+  const pq=new URLSearchParams({geometry:[bn.getWest(),bn.getSouth(),bn.getEast(),bn.getNorth()].join(","),
+    geometryType:"esriGeometryEnvelope",inSR:"4326",outSR:"4326",spatialRel:"esriSpatialRelIntersects",
+    outFields:"TOTAL_VAL,LAND_VAL,BLDG_VAL,YEAR_BUILT,USE_CODE,SITE_ADDR,BLD_AREA,LOT_SIZE,LOT_UNITS",
+    returnGeometry:"true",resultRecordCount:"2000",f:"geojson"});
+  const repPt=g=>g&&(g.type==="Polygon"?(g.coordinates[0]||[])[0]:g.type==="MultiPolygon"?(((g.coordinates[0]||[])[0])||[])[0]:null);
+  try{
+    const geo=await (await fetch(PARCEL_URL+"?"+pq)).json(),rf=rollFactor();
+    const res=(geo.features||[]).filter(f=>{const c=repPt(f.geometry);return c&&pointInGeom(feat.geometry,c[0],c[1])&&f.properties.TOTAL_VAL>0&&isResidential(f.properties);});
+    const psf=arr=>arr.length?arr.sort((a,c)=>a-c)[Math.floor(arr.length/2)]:null;
+    const psfSF=psf(res.filter(f=>isSingleFam(f.properties)&&f.properties.BLD_AREA>=400).map(f=>(f.properties.TOTAL_VAL/ASR*rf)/f.properties.BLD_AREA).filter(v=>v>60&&v<2000));   // engine benchmark
+    const psfAll=psf(res.filter(f=>f.properties.BLD_AREA>=300).map(f=>(f.properties.TOTAL_VAL/ASR*rf)/f.properties.BLD_AREA).filter(v=>v>50&&v<2500))||0;                              // display
+    const eng=(psfSF&&res.filter(f=>isSingleFam(f.properties)&&f.properties.BLD_AREA>=400).length>=4)?psfSF:null;
+    const mvs=[],buys=[],deals=[];
+    res.forEach(f=>{const p=f.properties,mv=estMarket(p,eng);if(mv==null)return;mvs.push(mv);buys.push(idealBuy(p,eng));
+      const ds=dealScore(p,eng);if(ds.score>=45){const c=repPt(f.geometry);deals.push({addr:p.SITE_ADDR||"(parcel)",mv,score:ds.score,reason:ds.reason,lat:c[1],lon:c[0]});}});
+    mvs.sort((a,c)=>a-c);buys.sort((a,c)=>a-c);
+    const med=a=>a.length?a[Math.floor(a.length/2)]:0;
+    const medMarket=med(mvs),floor=Math.max(180000,0.5*medMarket);   // a "deal" must still be a normally-valued home, not a sub-half-median anomaly
+    const topDeals=deals.filter(d=>d.mv>=floor).sort((a,c)=>c.score-a.score).slice(0,3);
+    const data={n:mvs.length,medMarket,medBuy:med(buys),psf:psfAll,deals:topDeals};
+    HOOD_VALUES[key]=data;
+    if(SELHOOD&&(SELHOOD.town_geoid+"|"+SELHOOD.name)===key)renderHoodValues(data);
+  }catch(e){if(body())body().textContent="Couldn't load assessor values right now.";}
+}
+function backToTown(){if(SELTOWN){SELHOOD=null;view="town";clearDetail(false);if(neighLayer)neighLayer.setStyle(hoodStyle);MARKERS.clearLayers();
+  const tl=townLayerByGeoid[SELTOWN.geoid];if(tl)map.flyToBounds(tl.getBounds(),{padding:[50,50],maxZoom:14,duration:.6});renderTownPanel(SELTOWN,NEIGH_BY_TOWN[SELTOWN.geoid]||[]);}}
+function HOOD(name){const f=(NEIGH_BY_TOWN[SELTOWN.geoid]||[]).find(x=>x.properties.name===name);return f?f.properties:null;}
+function zoomToParcels(){const l=SELHOOD&&HOODLAYERS[SELHOOD.name];if(l)map.flyToBounds(l.getBounds(),{maxZoom:16,padding:[30,30],duration:.6});else map.setZoom(Math.max(map.getZoom(),16));}
+function esc(s){return s.replace(/'/g,"\\'");}
+function esch(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+/* ---------------- street + parcel detail (loads on zoom-in) ---------------- */
+const PARCEL_URL="https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/L3_Parcels_FeatureService_4326/FeatureServer/1/query";
+const OVERPASS_URL="https://overpass-api.de/api/interpreter";
+const DETAIL_ZOOM=15;
+let parcelLayer=null,streetLayer=null,detailKey=null,detailBusy=false,_detailTimer=null;
+const PSTOPS=[[150000,[33,46,72]],[300000,[44,110,143]],[450000,[47,158,143]],[600000,[124,192,106]],[850000,[244,211,94]]];
+function parcelColor(v){if(v==null||v<=0)return"#2c3647";v=Math.max(PSTOPS[0][0],Math.min(PSTOPS[PSTOPS.length-1][0],v));
+  for(let i=1;i<PSTOPS.length;i++){if(v<=PSTOPS[i][0]){const[a,ca]=PSTOPS[i-1],[b,cb]=PSTOPS[i],t=(v-a)/(b-a);const c=ca.map((x,k)=>Math.round(x+(cb[k]-x)*t));return`rgb(${c[0]},${c[1]},${c[2]})`;}}return"rgb(244,211,94)";}
+function money(v){return(v&&v>0)?"$"+Math.round(v).toLocaleString():"n/a";}
+
+/* ================= per-house valuation (AVM) — my own calibrated equations =================
+   market value = blend of (A) assessment rolled to today and (B) neighborhood $/sqft comps;
+   ideal buy = disciplined value-buyer target under market, widened by deal signals;
+   deal score = overlooked/under-priced finder. All client-side on the parcels we fetch on zoom. */
+const ASR=0.95;            // MA median assessment-to-market ratio (DOR target 90-110%)
+const ROLL_YEARS=2.0;      // assessment-date lag -> roll forward ~2 yrs of appreciation
+let PSF_MED=null;          // viewport median $/sqft (the local comp set), set per fetch
+function townApprRate(){   // annualized price growth for the town we're inside (fallback ~4%/yr)
+  const tp=SELTOWN?TOWN_PROPS[SELTOWN.geoid]:null;
+  let a5=(tp&&tp.appr5!=null)?tp.appr5:25; a5=Math.max(-25,Math.min(120,a5));
+  return Math.pow(1+a5/100,1/5)-1;
+}
+function rollFactor(){return Math.pow(1+townApprRate(),ROLL_YEARS);}
+function isResidential(p){const u=String(p.USE_CODE||"");return u.charAt(0)==="1";}     // class 1xx = residential
+function isSingleFam(p){return String(p.USE_CODE||"").slice(0,3)==="101";}              // $/sqft comps only apples-to-apples here
+function vA(p){return (p.TOTAL_VAL>0)?p.TOTAL_VAL/ASR*rollFactor():null;}                // assessment rolled to today
+function computePsf(features){   // median SINGLE-FAMILY $/sqft = the only clean comp benchmark
+  const rf=rollFactor(),arr=[];
+  (features||[]).forEach(f=>{const p=f.properties;
+    if(p.TOTAL_VAL>0&&p.BLD_AREA>=400&&isSingleFam(p)){const psf=(p.TOTAL_VAL/ASR*rf)/p.BLD_AREA;if(psf>60&&psf<2000)arr.push(psf);}});
+  arr.sort((a,b)=>a-b); PSF_MED=arr.length>=4?arr[Math.floor(arr.length/2)]:null;       // need a real sample
+}
+function ageAdj(yr){if(!yr)return 1;const age=2026-yr;return age>100?.92:age>70?.96:age>40?.99:1;}
+function sizeAdj(s){if(!s)return 1;return s>4500?.88:s>3200?.94:s<900?1.05:1;}
+function vB(p,psf){psf=psf||PSF_MED;return(psf&&isSingleFam(p)&&p.BLD_AREA>=400)?p.BLD_AREA*psf*ageAdj(p.YEAR_BUILT)*sizeAdj(p.BLD_AREA):null;}
+function estMarket(p,psf){const a=vA(p);if(a==null)return null;const b=vB(p,psf);
+  if(b==null)return a;                                  // condos/multi-family: trust the (market-calibrated) assessment
+  const bc=Math.max(0.8*a,Math.min(1.25*a,b));          // bound the comp so a stray $/sqft can't blow up the estimate
+  return 0.65*a+0.35*bc;}
+function confidence(p,psf){const a=vA(p);if(a==null)return"low";const b=vB(p,psf);if(b==null)return isResidential(p)?"med":"low";const d=Math.abs(a-b)/((a+b)/2);return d<=0.12?"high":d<=0.28?"med":"low";}
+function dealScore(p,psf){
+  if(!(p.TOTAL_VAL>0))return{score:0,reason:""};
+  psf=psf||PSF_MED;                                  // psf must be a SINGLE-FAMILY benchmark
+  const sqft=p.BLD_AREA||0;
+  if(!isResidential(p)||sqft<500)return{score:0,reason:""};   // only score plausible homes (skip parking / fractional / bare land)
+  const a=vA(p),mv=estMarket(p,psf),cand=[];
+  const ppsf=(a!=null)?a/sqft:null;
+  const realHome=mv!=null&&mv>=250000;
+  // (a) single-family with a GENUINE 28-55% discount to the block's single-family $/sqft
+  //     (deeper than ~55% is almost always bad/non-arms-length data, not a real deal)
+  if(isSingleFam(p)&&psf&&ppsf&&ppsf<psf*0.72&&ppsf>psf*0.45){const pct=Math.round((1-ppsf/psf)*100);cand.push([Math.min(30,10+Math.round((pct-28)*1.2)),`~${pct}% below the block's single-family $/sqft — check why (value vs. condition)`]);}
+  // (b) land-heavy AND underbuilt -> genuine rebuild/expansion lot
+  const ls=(p.LAND_VAL>0&&p.TOTAL_VAL>0)?p.LAND_VAL/p.TOTAL_VAL:0;
+  const underbuilt=((p.YEAR_BUILT||9999)<1965)||(psf&&p.BLDG_VAL>0&&sqft>=400&&(p.BLDG_VAL/sqft)<psf*0.5);
+  if(ls>=0.65&&isResidential(p)&&underbuilt&&sqft>=400){cand.push([Math.min(32,8+Math.round((ls-0.65)*110)),`Land is ${Math.round(ls*100)}% of value on an older/underbuilt lot — expansion / ADU / rebuild upside`]);}
+  // (c) fixer-upper
+  if(p.YEAR_BUILT&&p.YEAR_BUILT<1950&&isResidential(p)&&sqft>=700&&psf&&p.BLDG_VAL>0&&(p.BLDG_VAL/sqft)<psf*0.38){cand.push([24,`Built ${p.YEAR_BUILT}, low building value — renovation / sweat-equity upside`]);}
+  // (d) large single-family at a below-block $/sqft
+  if(isSingleFam(p)&&sqft>=2600&&sqft<6000&&psf&&ppsf&&ppsf<psf*0.8){cand.push([18,`Large single-family below the block's $/sqft — value per square foot`]);}
+  // (e) overlooked affordable REAL home in a strong pocket
+  if(realHome&&mv<=600000&&SELHOOD&&((SELHOOD.future||0)>=70||(SELHOOD.rent_demand||0)>=72||(SELHOOD.appr5||0)>=45)){cand.push([24,`A real home under $600k in a high-demand / high-growth pocket — overlooked entry`]);}
+  if(!cand.length)return{score:0,reason:"No standout discount signal"};
+  const score=Math.min(100,Math.round(cand.reduce((s,c)=>s+c[0],0)));
+  cand.sort((x,y)=>y[0]-x[0]);
+  return{score,reason:cand[0][1]};
+}
+function idealBuy(p,psf){const mv=estMarket(p,psf);if(mv==null)return null;const disc=0.04+Math.min(0.08,dealScore(p,psf).score/100*0.08);return mv*(1-disc);}
+function dealColor(s){return s<=0?"#2c3647":ramp(s);}
+function parcelTip(p){
+  if(parcelMode==="deal"){const d=dealScore(p);return d.score>0?"⭐ "+d.score:"—";}
+  const v=parcelMode==="value"?p.TOTAL_VAL:parcelMode==="buy"?idealBuy(p):estMarket(p);
+  return v>0?money(v):"—";
+}
+function detailStatus(msg){const el=document.getElementById("detailStatus");if(!msg){el.classList.remove("on");return;}document.getElementById("detailMsg").textContent=msg;el.classList.add("on");}
+function bboxKey(b){return [b.getWest().toFixed(3),b.getSouth().toFixed(3),b.getEast().toFixed(3),b.getNorth().toFixed(3)].join(",");}
+function fadeContext(faint){
+  if(neighLayer)neighLayer.setStyle(faint?{fillOpacity:.05,weight:.5,color:"rgba(255,255,255,.1)"}:hoodStyle);
+  if(topLayer)topLayer.setStyle(faint?{fillOpacity:.05,weight:.5,color:"rgba(251,191,36,.3)"}:topHoodStyle);
+}
+function clearDetail(restoreLegend){
+  if(parcelLayer){map.removeLayer(parcelLayer);parcelLayer=null;}
+  if(streetLayer){map.removeLayer(streetLayer);streetLayer=null;}
+  detailKey=null;fadeContext(false);
+  document.getElementById("parcelCtrl").style.display="none";
+  if(restoreLegend!==false){if(view==="state")setLegend("score");else updateNeighLegend();}
+}
+let parcelMode="market",lastParcelN=0,lastParcelCapped=false;
+function budgetParcelColor(v){if(v==null||v<=0)return"#2c3647";if(v<400000)return"#5b9dff";if(v<=600000)return"#34d399";return"#f87171";}
+function parcelFill(p){
+  if(parcelMode==="budget")return budgetParcelColor(p.TOTAL_VAL);
+  if(parcelMode==="deal")return dealColor(dealScore(p).score);
+  if(parcelMode==="buy")return budgetParcelColor(idealBuy(p));    // does the ideal-buy land in budget?
+  if(parcelMode==="market")return parcelColor(estMarket(p));
+  return parcelColor(p.TOTAL_VAL);                                 // "value" = raw assessed
+}
+function applyParcelStyle(){if(!parcelLayer)return;
+  parcelLayer.setStyle(f=>({fillColor:parcelFill(f.properties),fillOpacity:.78,color:"rgba(8,11,17,.4)",weight:.4}));
+  parcelLayer.eachLayer(l=>l.setTooltipContent(parcelTip(l.feature.properties)));}
+function setParcelMode(m){parcelMode=m;applyParcelStyle();parcelLegend(lastParcelN,lastParcelCapped);}
+function parcelLegend(n,capped){
+  lastParcelN=n;lastParcelCapped=capped;
+  const bar=document.querySelector("#legend .bar"),ends=document.getElementById("legendEnds"),ctrl=document.getElementById("parcelCtrl");
+  const titles={market:"Est. market value",buy:"Ideal buy target",deal:"⭐ Deal finder",value:"Assessed value",budget:"By my budget"};
+  document.getElementById("legendTitle").textContent=(titles[parcelMode]||"Properties")+" · "+n+(capped?"+":"")+" lots";
+  ctrl.style.display="block";
+  const btn=(m,l)=>`<button class="${parcelMode===m?"active":""}" onclick="setParcelMode('${m}')">${l}</button>`;
+  ctrl.innerHTML=`<div class="ntog" style="flex-wrap:wrap">${btn("market","Market")}${btn("buy","Buy")}${btn("deal","⭐ Deal")}${btn("value","Assessed")}${btn("budget","Budget")}</div>`;
+  if(parcelMode==="deal"){
+    bar.style.background="linear-gradient(90deg,#c2384a,#efab4a,#46b079)";
+    ends.innerHTML="<span>Pass</span><span>Strong deal</span>";
+  }else if(parcelMode==="budget"||parcelMode==="buy"){
+    bar.style.background="linear-gradient(90deg,#5b9dff 0 33%,#34d399 33% 66%,#f87171 66% 100%)";
+    ends.innerHTML="<span>&lt;$400k</span><span>$400–600k</span><span>&gt;$600k</span>";
+  }else{
+    bar.style.background="linear-gradient(90deg,rgb(33,46,72),rgb(44,110,143),rgb(47,158,143),rgb(124,192,106),rgb(244,211,94))";
+    ends.innerHTML="<span>$150k</span><span>$850k+</span>";
+  }
+  document.getElementById("qkey").style.display="none";
+}
+function parcelPopupHTML(p){
+  const lines=[];
+  if(p.TOTAL_VAL>0){
+    const mv=estMarket(p),ib=idealBuy(p),ds=dealScore(p),conf=confidence(p);
+    if(mv!=null){
+      lines.push(`<span style="font-size:17px;font-weight:800;color:${parcelColor(mv)}">${money(mv)}</span> <span class="muted">est. market value · ${conf} confidence</span>`);
+      lines.push(`<span style="color:#6ee7b7;font-weight:700">${money(ib)}</span> <span class="muted">ideal buy target (disciplined)</span>`);
+    }
+    const psf=(p.BLD_AREA>0)?" · $"+Math.round(p.TOTAL_VAL/p.BLD_AREA).toLocaleString()+"/sqft assessed":"";
+    lines.push(`<span class="muted">${money(p.TOTAL_VAL)} assessed${p.BLD_AREA>0?` · ${Math.round(p.BLD_AREA).toLocaleString()} sqft${psf}`:""}</span>`);
+    if(ds.score>=35)lines.push(`<span style="color:#fcd34d;font-weight:700">⭐ Deal ${ds.score}</span> <span class="muted">${esch(ds.reason)}</span>`);
+  } else lines.push(`<span class="muted">Not separately assessed (likely condo / exempt)</span>`);
+  const sy=[p.STYLE,p.YEAR_BUILT?"built "+p.YEAR_BUILT:""].filter(Boolean).join(" · ");
+  if(sy)lines.push(`<span class="muted">${esch(sy)}</span>`);
+  const lb=[];
+  if(p.LAND_VAL>0)lb.push("Land "+money(p.LAND_VAL));
+  if(p.BLDG_VAL>0)lb.push("Building "+money(p.BLDG_VAL));
+  if(p.LOT_SIZE)lb.push("Lot "+p.LOT_SIZE+" "+(p.LOT_UNITS||""));
+  if(lb.length)lines.push(`<span class="muted">${esch(lb.join(" · "))}</span>`);
+  return `<b>${esch(p.SITE_ADDR||"Parcel")}</b><br>`+lines.join("<br>");
+}
+async function loadDetail(){
+  if(view==="state"||map.getZoom()<DETAIL_ZOOM){if(parcelLayer||streetLayer)clearDetail();return;}
+  const bnd=map.getBounds(),key=map.getZoom()+"|"+bboxKey(bnd);
+  if(key===detailKey||detailBusy)return;
+  detailBusy=true;detailStatus("Loading streets & property values…");
+  const bbox=bnd.getWest()+","+bnd.getSouth()+","+bnd.getEast()+","+bnd.getNorth();
+  try{
+    const pq=new URLSearchParams({geometry:bbox,geometryType:"esriGeometryEnvelope",inSR:"4326",outSR:"4326",
+      spatialRel:"esriSpatialRelIntersects",
+      outFields:"TOTAL_VAL,LAND_VAL,BLDG_VAL,YEAR_BUILT,USE_CODE,SITE_ADDR,STYLE,BLD_AREA,LOT_SIZE,LOT_UNITS",
+      returnGeometry:"true",resultRecordCount:"2000",f:"geojson"});
+    const geo=await (await fetch(PARCEL_URL+"?"+pq)).json();
+    if(view==="state"||map.getZoom()<DETAIL_ZOOM){detailBusy=false;detailStatus("");return;}
+    computePsf(geo.features);   // local comp benchmark for the valuation engine
+    if(parcelLayer)map.removeLayer(parcelLayer);
+    parcelLayer=L.geoJSON(geo,{style:f=>({fillColor:parcelFill(f.properties),fillOpacity:.78,color:"rgba(8,11,17,.4)",weight:.4}),
+      onEachFeature:(f,l)=>{const p=f.properties;
+        l.bindTooltip(parcelTip(p),{className:"tip",sticky:true,opacity:1});
+        l.on("click",()=>l.bindPopup(parcelPopupHTML(p)).openPopup());}}).addTo(map);
+    detailKey=key;fadeContext(true);
+    const nf=(geo.features||[]).length;parcelLegend(nf,nf>=2000);
+    // street network on top (visual only)
+    try{
+      const sq=`[out:json][timeout:25];(way["highway"~"^(residential|tertiary|secondary|primary|unclassified|living_street|trunk|road)$"](${bnd.getSouth()},${bnd.getWest()},${bnd.getNorth()},${bnd.getEast()}););out geom tags;`;
+      const sd=await (await fetch(OVERPASS_URL+"?data="+encodeURIComponent(sq))).json();
+      const feats=(sd.elements||[]).filter(w=>w.geometry&&w.geometry.length>1)
+        .map(w=>({type:"Feature",properties:{},geometry:{type:"LineString",coordinates:w.geometry.map(g=>[g.lon,g.lat])}}));
+      if(streetLayer)map.removeLayer(streetLayer);
+      streetLayer=L.geoJSON({type:"FeatureCollection",features:feats},{interactive:false,style:{color:"#e2e9f2",weight:1,opacity:.2}}).addTo(map);
+    }catch(se){/* streets optional */}
+  }catch(e){console.warn("parcel load failed",e);detailStatus("Parcels unavailable here");setTimeout(()=>detailStatus(""),1800);detailBusy=false;return;}
+  detailBusy=false;detailStatus("");
+}
+map.on("moveend zoomend",()=>{clearTimeout(_detailTimer);_detailTimer=setTimeout(loadDetail,350);});
+
+/* ---------------- controls ---------------- */
+function buildColorMenu(){
+  const panel=document.getElementById("colorPanel");
+  const row=(k,label)=>`<div class="mopt ${colorModes.includes(k)?"on":""}" data-k="${k}"><span class="ck">${colorModes.includes(k)?"✓":""}</span><span>${label}</span></div>`;
+  panel.innerHTML=`<div class="mhead">Score &amp; outlook</div>`+HEAD_MODES.map(([k,l])=>row(k,l)).join("")
+    +`<div class="mhead">Single criteria</div>`+Object.keys(META.weights).map(k=>row(k,META.labels[k])).join("")
+    +`<div class="mfoot"><span>Pick several to blend evenly</span><a id="colorReset">Reset</a></div>`;
+  panel.querySelectorAll(".mopt").forEach(o=>o.onclick=()=>toggleColor(o.dataset.k));
+  document.getElementById("colorReset").onclick=()=>{colorModes=["composite"];afterColorChange();};
+}
+function toggleColor(k){
+  const i=colorModes.indexOf(k);
+  if(i>=0){if(colorModes.length>1)colorModes.splice(i,1);}   // keep at least one
+  else colorModes.push(k);
+  afterColorChange();
+}
+function afterColorChange(){
+  document.getElementById("colorBtnLabel").textContent=colorLabel().replace("Opportunity score","Overall opportunity");
+  buildColorMenu();
+  if(view==="state"){render();renderStateRanking();}else if(LAYER)LAYER.setStyle(backdropStyle);
+}
+function initControls(){
+  buildColorMenu();
+  const btn=document.getElementById("colorBtn"),panel=document.getElementById("colorPanel");
+  btn.onclick=(e)=>{e.stopPropagation();panel.classList.toggle("open");};
+  panel.onclick=(e)=>e.stopPropagation();
+  document.addEventListener("click",()=>panel.classList.remove("open"));
+  document.getElementById("colorBtnLabel").textContent="Overall opportunity";
+  document.querySelectorAll("#budgetSeg button").forEach(b=>{b.onclick=()=>{
+    if(view!=="state")drillOut();
+    document.querySelectorAll("#budgetSeg button").forEach(x=>x.classList.remove("active"));b.classList.add("active");budget=b.dataset.v;render();fitToFiltered();
+    const c=countMatches();document.getElementById("matchCount").textContent=budget==="all"?"":`${c} towns match`;
+    renderStateRanking();};});
+  document.getElementById("topBtn").onclick=()=>{if(view==="tophoods")drillOut();else showTopHoods();};
+  document.getElementById("weightsBox").innerHTML=Object.keys(META.weights).sort((a,b)=>META.weights[b]-META.weights[a])
+    .map(k=>`<div class="weightrow"><span><i class="qdot ${QCLASS[META.quality[k]]}"></i>${META.labels[k]}</span><b>${META.weights[k]}</b></div>`).join("")
+    +`<div class="note" style="margin-top:8px">Appreciation-tilt weighting · budget $${META.budget_lo/1000}k–$${META.budget_hi/1000}k.</div>`;
+  const search=document.getElementById("search");
+  const jump=(go)=>{const q=search.value.trim().toLowerCase();if(q.length<2)return;let best=null;
+    LAYER.eachLayer(l=>{if(!best&&l.feature.properties.name.toLowerCase().startsWith(q))best=l;});
+    if(best){if(go)drillIn(best.feature.properties);else if(view==="state")map.flyToBounds(best.getBounds(),{maxZoom:11,duration:.5});}};
+  search.oninput=()=>jump(false);search.onkeydown=(e)=>{if(e.key==="Enter")jump(true);};
+}
+function fitToFiltered(){if(budget==="all"){map.flyTo([42.15,-71.7],8.3,{duration:.6});return;}
+  const b=L.latLngBounds([]);LAYER.eachLayer(l=>{if(matchesBudget(l.feature.properties))b.extend(l.getBounds());});if(b.isValid())map.flyToBounds(b,{padding:[34,34],maxZoom:9,duration:.6});}
+function countMatches(){let n=0;LAYER.eachLayer(l=>{if(matchesBudget(l.feature.properties))n++;});return n;}
+
+/* ---- load: paint the state map from the light towns.geojson first, then stream the
+       drill-only data (neighborhood geometry + town/neighborhood detail) in the
+       background so first paint isn't blocked by ~1.5 MB of text. ---- */
+let dataReady=false,_dataResolve,dataPromise=new Promise(r=>_dataResolve=r);
+function ensureData(){return dataReady?Promise.resolve():dataPromise;}
+function bootError(e){document.querySelector("#sidebar .empty-hint").innerHTML=`<div class="big">Couldn't load data</div>Run <b>python3 build_neighborhoods.py</b> &amp; <b>build_data.py</b>, then serve over http (README).<br><br>${e}`;}
+(async function boot(){
+  let v="";
+  try{const m=await (await fetch("./data/manifest.json",{cache:"no-store"})).json();if(m&&m.v)v="?v="+m.v;}
+  catch(e){v="?v="+Date.now();}            // no manifest -> fall back to always-fresh
+  let townsGeo;
+  try{townsGeo=await (await fetch("./data/towns.geojson"+v)).json();}catch(e){return bootError(e);}
+  META=townsGeo.meta;
+  (townsGeo.features||[]).forEach(f=>{TOWN_PROPS[f.properties.geoid]=f.properties;});
+  initControls();
+  LAYER=L.geoJSON(townsGeo,{style:styleFor,onEachFeature:(f,layer)=>{const p=f.properties;townLayerByGeoid[p.geoid]=layer;
+    layer.bindTooltip(`<b>${p.name}</b><span class="tv">Score ${p.composite}</span>`,{sticky:true,direction:"top",className:"tip",opacity:1});
+    layer.on("mouseover",()=>{if(view==="state")layer.setStyle({weight:1.6,color:"#cdd8e6"});});
+    layer.on("mouseout",()=>{if(view==="state")LAYER.resetStyle(layer);});
+    layer.on("click",()=>drillIn(p));}}).addTo(map);
+  render();
+  renderStateRanking();   // show the town leaderboard on load (instead of the empty hint)
+  // background: neighborhood geometry + the two detail sidecars (not needed for first paint)
+  const j=(u)=>fetch(u+v).then(r=>r.json());
+  Promise.all([
+    j("./data/neighborhoods.geojson").then(g=>{(g.features||[]).forEach(f=>{(NEIGH_BY_TOWN[f.properties.town_geoid]=NEIGH_BY_TOWN[f.properties.town_geoid]||[]).push(f);});}),
+    j("./data/town_detail.json").then(d=>{TOWN_DETAIL=d||{};}),
+    j("./data/neighborhoods_detail.json").then(d=>{NEIGH_DETAIL=d||{};}),
+  ]).catch(e=>console.warn("background data load failed",e)).finally(()=>{dataReady=true;_dataResolve();});
+})();
+</script>
+</body>
+</html>

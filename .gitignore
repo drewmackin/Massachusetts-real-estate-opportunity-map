@@ -1,0 +1,7 @@
+# Downloaded source data (large, regenerable via fetch_*.py)
+data/raw/
+
+# Python / OS cruft
+__pycache__/
+*.pyc
+.DS_Store
