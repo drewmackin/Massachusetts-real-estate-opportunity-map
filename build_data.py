@@ -497,14 +497,39 @@ def augment_neighborhoods(towns):
         else:
             p["renter_profile"] = "A mix of young renters & families"
 
+    import bisect
+    def clamp(v, lo=0, hi=100): return max(lo, min(hi, v))
+    # within-town neighborhood opportunity ranking, so the safety ESTIMATE can vary by area
+    town_scores = {g: sorted(feats[j]["properties"].get("score") or 50 for j in idxs)
+                   for g, idxs in by_town.items()}
     for i, f in enumerate(feats):
-        f["properties"]["future"] = round(fp[i] if fp[i] is not None else 50.0, 1)
+        p = f["properties"]
+        tw = tw_by.get(p["town_geoid"]) or {}
+        p["future"] = round(fp[i] if fp[i] is not None else 50.0, 1)
+        # enrich the sub-town subscores with town-level context dimensions for the "which side" lens.
+        # schools = curated district tier; safety = a transparent PROXY (NOT reported crime data,
+        # which isn't openly available sub-town) — both are town-level so they read flat within a town.
+        schools = (tw.get("scores") or {}).get("schools", 60)
+        ts = town_scores.get(p["town_geoid"]) or []
+        mysc = p.get("score") or 50
+        if len(ts) > 1:                                  # neighborhood's within-town desirability percentile
+            lo = bisect.bisect_left(ts, mysc); hi = bisect.bisect_right(ts, mysc)
+            pos = (lo + hi) / 2.0 / len(ts)
+        else:
+            pos = 0.5
+        sub = p.get("sub") or {}
+        sub["schools"] = round(schools)                  # schools/district is genuinely town-level
+        # safety estimate: town baseline shifted ±14 by the area's relative desirability (proxy, labeled)
+        sub["safety"] = round(clamp((tw.get("safety") or 50) + (pos - 0.5) * 28))
+        sub["rent"] = round(p.get("rent_demand") or 50)
+        sub["opp"] = round(p.get("score") or 50)
+        p["sub"] = sub
         g = f.get("geometry")
         if g and "coordinates" in g:
             g["coordinates"] = round_coords(g["coordinates"])
     with open(path, "w") as fh:
         json.dump(geo, fh, separators=(",", ":"))
-    print(f"  added future + rent insight to {len(feats)} neighborhoods")
+    print(f"  added future + rent insight + sub-town subscores to {len(feats)} neighborhoods")
 
 
 def main():
@@ -769,6 +794,18 @@ def main():
     # ---- landlord rentability (now + forward) ----
     compute_rentability(towns)
 
+    # ---- safety / crime estimate (a transparent PROXY, higher = safer / less crime) ----
+    #      Reported sub-municipal crime data isn't openly available statewide, so this is an
+    #      ESTIMATE from signals that correlate with safety (school tier, home value, appreciation).
+    #      The real, cited per-town crime picture lives in each town's researched `safety_note`.
+    def _clamp(v, lo=0.0, hi=100.0): return max(lo, min(hi, v))
+    for t in towns:
+        sch = (t.get("scores") or {}).get("schools", 60)
+        appr = t["appr5"] if t.get("appr5") is not None else 25
+        val = t.get("price") or 0
+        t["safety"] = round(_clamp(0.45 * sch + 0.25 * _clamp((appr - 10) / 60 * 100)
+                                   + 0.30 * _clamp((val - 250000) / 450000 * 100)))
+
     # ---- local government (form + authoritative links) ----
     for t in towns:
         form, kind = curated.gov_form(t["name"])
@@ -798,7 +835,7 @@ def main():
             "geoid": t["gid"], "name": t["name"], "county": t["county"],
             "composite": t["composite"], "rank": t["rank"], "pctl": t["pctl"],
             "future": t["future"],
-            "rentability": t["rentability"], "rent_future": t["rent_future"],
+            "rentability": t["rentability"], "rent_future": t["rent_future"], "safety": t["safety"],
             "rent": round(t["rent"]) if t.get("rent") else None,
             "rent_est": t.get("rent_est"),
             "gross_yield": round(t["gross_yield"], 1) if t.get("gross_yield") is not None else None,

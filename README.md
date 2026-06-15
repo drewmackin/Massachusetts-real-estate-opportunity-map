@@ -25,8 +25,8 @@ the metric or budget filter; click any row to drill into that town.
 
 ```bash
 cd ma-real-estate-opportunity-map
-python3 -m http.server 8000
-# open http://localhost:8000/  (must be http, not file://, so fetch() works)
+python3 serve.py            # http://localhost:8000/  (recommended — ♥ Likes persist to disk)
+# or:  python3 -m http.server 8000   (likes stay in the browser only)
 ```
 
 To rebuild the data from scratch:
@@ -137,6 +137,62 @@ assumptions. Sources: [MA DLS FY2025 assessment standards](https://www.mass.gov/
 [Needham property-value process](https://www.needhamma.gov/195/Property-Value-Process),
 [Wikipedia: Automated valuation model](https://en.wikipedia.org/wiki/Automated_valuation_model),
 [sales-comparison approach](https://en.wikipedia.org/wiki/Sales_comparison_approach).
+
+The estimate is sharpened with two MassGIS fields most AVMs ignore at this price: each parcel's
+**assessment fiscal year** (`FY`) — so it rolls forward by its *own* assessment age rather than a
+fixed window — and its **most recent arm's-length sale** (`LS_PRICE`/`LS_DATE`, rolled to today and
+weighted by recency; $1 family transfers and bulk deals are filtered out). A recent real sale makes
+the estimate **high-confidence**. Each home also gets a **per-house rent estimate** (the town's
+Zillow ZORI rent scaled sub-linearly by the home's value, ×units for multi-families) and a yield.
+
+## 🔴 Living map — on-market status, pre-listing flags & nightly auto-update
+
+`update_listings.py` runs every night (1 AM via a launchd job — see `install_autoupdate.sh`; it
+catches up at the next login if the Mac was off) and makes the map *live*:
+
+- **On the market** — scrapes Redfin's public `gis-csv` polygon endpoint for **active and
+  coming-soon** listings, matches each to its MassGIS parcel by a normalized address, and the map
+  shows **For sale (price · days-on-market · link) / Coming soon / Sale pending / Not currently
+  listed** on each home. (Best-effort: some MLS feeds exclude downloads, so "not listed" can mean
+  "not found.")
+- **Possibly coming soon** — a **prediction** for homes *not* currently listed, from ownership
+  tenure (years since last sale), absentee / out-of-state ownership, redevelopment signals and a
+  hot-market boost. A lead to watch or approach the owner — not a guarantee.
+- **A prioritization algorithm** so it never scans all ~2.8M MA homes: it ranks neighborhoods by
+  town quality + appreciation + rent demand + how long since they were last refreshed, **always
+  includes the pockets around your ♥ liked homes**, and covers ~`MAP_TARGET_HOMES` (default 500,
+  tunable toward 100) per night, rotating coverage over time.
+- A **🏷 Status** parcel legend mode colors every home by its market status; the parcel legend also
+  adds a **Rent** mode.
+
+## 🏡 The home detail page (click any home)
+
+Clicking a specific home opens a **full ~80%-screen detail page** instead of a small popup:
+its on-market price/days/Redfin link (or "not currently listed"), estimated market value +
+confidence + the full valuation breakdown (assessed → rolled-to-today → comps → last sale), rent +
+yield, ⭐ deal score, the **◇ likely-to-list prediction with its reasons**, building facts
+(beds/rooms/sqft/year/style/lot/zoning), **owner-occupied vs. absentee**, the neighborhood context,
+and a **☆ Like** button. Liked homes are saved (and feed the nightly prioritization via `serve.py`).
+
+## 🧭 Which side of town is better?
+
+Drilling into a town shows a **lens** that recolors its neighborhoods by any single factor —
+📈 appreciation, 🚶 walkability, 🚆 transit, 🌳 parks & green, 🍽 dining, 🎭 arts & culture,
+💰 rent demand, ⭐ opportunity — with a plain-English read-out naming the **strongest and weakest
+areas and which side of town leads** (e.g. *"the southern side of Worcester leads for parks"*). The
+sub-scores come from real OSM + pipeline data per neighborhood. **🛡 Safety / crime** is also a
+top-level **Color by** option (rank every town safest→riskiest) and varies by neighborhood — but it
+is a **labelled estimate** from signals that correlate with safety (school tier, home value,
+appreciation, area desirability), *not* reported crime stats, since sub-municipal crime data isn't
+openly available statewide. The real, cited crime picture for each town lives in its **🔎 "What it's
+really like"** safety note. **🎓 Schools** is the curated district tier (town-level, marked •).
+
+## 🔎 Researched town content
+
+Each in-budget 40+ town carries **real, web-researched** content (gathered by a fan-out of
+web-research agents, cited): why people live there, the most desirable area, school and safety
+reputation, recent market/development notes, and a character blurb per neighborhood — shown as the
+**"What *town* is really like"** section and on each neighborhood. Rebuilt with `build_research.py`.
 
 ## Statewide views
 

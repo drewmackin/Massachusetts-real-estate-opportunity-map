@@ -1,100 +1,112 @@
 # Handoff — MA Real-Estate Opportunity Map
 
-_Snapshot: June 14, 2026. Everything below is built, verified in-browser, and committed._
+_Updated June 15, 2026. Everything below is built and verified in-browser; working tree is ready to commit.
+Researched-town content currently covers 89 of 102 in-budget towns (the rest hit a usage limit mid-run;
+re-run the research workflow + `build_research.py` to top up the remaining few — they fall back gracefully)._
 
-A self-contained interactive map of all **351 Massachusetts municipalities** for a
-first-time buyer (Drew, budget **$400–600k**, appreciation + landlord lens). Pure-Python
-stdlib data pipeline (no pip), single `index.html` (Leaflet). No backend.
+A self-contained interactive map of all **351 Massachusetts municipalities** for a first-time
+buyer (Drew, budget **$400–600k**, appreciation + landlord lens). Pure-Python stdlib pipeline
+(no pip), single `index.html` (Leaflet). Optional stdlib `serve.py` for the ♥ Likes feature.
 
 ## Run it (30 seconds)
 
 ```bash
 cd ~/ma-real-estate-opportunity-map
-python3 -m http.server 8000
-# open http://localhost:8000/   (must be http, not file://, so fetch() works)
+python3 serve.py            # -> http://localhost:8000/   (recommended: ♥ Likes persist to disk)
+# or:  python3 -m http.server 8000   (likes stay in the browser only)
 ```
+The committed `data/` files make it work immediately — **no rebuild needed** to run.
 
-The committed `data/` geojson files make it work immediately — **no rebuild needed** to run.
+## The "living map" — nightly auto-update (on-market + pre-listing)
 
-## Rebuild the data (only if refreshing sources)
+`update_listings.py` refreshes a prioritized slice of homes each night and writes
+`data/listings.json` (live for-sale + coming-soon), `data/prelist.json` (homes predicted to list
+soon), and `data/update_meta.json`. The map merges these so parcels show **For sale / Coming soon /
+Possibly coming soon / Not currently listed**.
 
 ```bash
-# fetch sources (one-time; large CSVs in data/raw/ are git-ignored, re-download if missing)
-python3 fetch_boundaries.py fetch_population.py fetch_transit.py fetch_osm.py \
-        fetch_osm_attractions.py fetch_tracts.py fetch_places.py   # (run each)
-# build — ORDER MATTERS:
-python3 build_neighborhoods.py   # -> neighborhoods.geojson + neighborhoods_detail.json
-python3 build_data.py            # -> towns.geojson + town_detail.json; rewrites neighborhoods
-                                 #    with future+rent fields; stamps data/manifest.json
+# install the 1 AM job (runs at next login if the Mac was off; once-per-day guard):
+bash install_autoupdate.sh
+# seed data manually any time:
+MAP_FORCE=1 python3 update_listings.py
+# knobs (env or in the .plist): MAP_TARGET_HOMES (default 500), MAP_MAX_REGIONS (45),
+#   MAP_MIN_REGIONS (12), MAP_PRELIST_MIN (55), MAP_ALL_TOWNS=1 (cover all 40+ towns, not just in-budget)
 ```
-Data downloaded once into `data/raw/` (git-ignored, ~130 MB): `zillow_city_zhvi.csv`
-(home values), `zillow_city_zori.csv` (rents), `fhfa_tract_hpi_ma.csv` (tract appreciation),
-plus the fetched TIGER/MBTA/OSM files.
+**Prioritization** (so it never scans all ~2.8M MA homes): each night it ranks neighborhoods by
+town quality + appreciation + rent demand + staleness, **always includes pockets with liked homes**,
+walks down the list scraping ~Target homes, and rotates coverage via `data/raw/update_state.json`.
+**Sources:** Redfin public `gis-csv` polygon endpoint (active + coming-soon) → matched to MassGIS
+assessor parcels by normalized address. Best-effort: some MLS feeds exclude downloads, so
+"not listed" can mean "not found".
+
+## Rebuild the static data (only if refreshing sources)
+
+```bash
+python3 build_neighborhoods.py   # -> neighborhoods.geojson (+ sub-town subscores) + detail sidecar
+python3 build_data.py            # -> towns.geojson + town_detail.json; adds future/rent/sub to hoods; manifest
+# town research (real web info) — run the workflow, then:
+python3 build_research.py <workflow_results.json>   # -> town_research.json + neighborhoods_research.json
+```
 
 ## What's built (all verified, console clean)
 
-- **Town choropleth** of all 351 towns, color = composite opportunity (red→green).
-- **Color by — multi-select / combine:** ⚡ Future potential, 💰 Rentability, 📈 Rent
-  outlook, Overall opportunity, or any of the 10 criteria — **tick several to blend evenly**.
-- **Live town leaderboard** (state view side panel): all 351 towns ranked best→worst by the
-  current Color-by selection; re-sorts on color/budget change; row hover highlights, click drills in.
-- **Click a town →** KPI header (rank · ⚡ future · 💰 rentability · price), **💰 Rentability
-  (landlord)** (ZORI yield + demand + 5-yr outlook), **🏛 Local government** (form + links),
-  neighborhoods ranked by real appreciation, 10 buy / 10 avoid reasons, scorecard, cool spots.
-- **Click a neighborhood →** 5/1/10-yr appreciation, **💰 Rent here** (per-neighborhood
-  estimated rent ±% vs town + demand + who-rents-here), **🏛 Home values & deals** (live),
-  **🛣 Streets & character** (named streets clipped to the tract, live from OSM), insights, spots.
-- **Zoom past z15 → per-house AVM valuation engine:** every parcel shows **est. market value**,
-  **ideal buy target**, and **⭐ deal score** (overlooked/discount finder), from real MassGIS
-  assessor data + self-authored equations. Legend toggle: Market / Buy / ⭐ Deal / Assessed /
-  Budget. Neighborhood "Home values & deals here" lists the top-3 deals with addresses.
-- **🏘 Best in-budget hoods** (toolbar) — top 40 affordable-city neighborhoods statewide.
-- **Budget filter** (All / ≤$600k / $400–600k / ★ Sweet).
-- **Perf:** light first paint (towns.geojson ~0.55 MB) + lazy detail sidecars; content-hash
-  `manifest.json` cache versioning (cached across reloads).
+- **Town choropleth** of all 351 towns; **Color by** is multi-select (⚡future, 💰rentability,
+  📈rent outlook, opportunity, or any of 10 criteria — tick several to blend).
+- **Live town leaderboard** (state side panel), **budget filter**, **🏘 best in-budget hoods**, **♥ Liked homes**.
+- **Click a town →** KPIs · 💰 rentability · 🏛 local government · **🔎 "What it's really like"
+  (real web-researched: why-live-here, most-desirable-area, schools/safety/market notes + sources)**
+  · **🧭 "Which side of town is better?" lens** (recolor neighborhoods by parks / walk / transit /
+  dining / culture / appreciation / rent / opportunity; schools & safety shown town-level) with a
+  readable best-vs-weakest + geographic-lean read-out · neighborhoods ranked · buy/avoid · scorecard.
+- **Click a neighborhood →** appreciation, 💰 rent here, **researched character blurb**, 🛣 streets, home values & deals.
+- **Zoom past z15 → per-house AVM:** every parcel shows **est. market value** (assessment rolled by
+  its own **fiscal year** + recent **sale-price anchor** + local $/sqft comps), **ideal buy target**,
+  **⭐ deal score**, **est. rent**, and **market status**. Parcel legend: 🏷 Status / Market / Buy /
+  ⭐ Deal / Rent / Assessed / Budget.
+- **Click a specific home → 80%-screen detail overlay:** on-market price/DOM/Redfin link (or
+  "not listed"), value + confidence + full valuation breakdown, rent + yield, ⭐ deal, **◇ likely-to-list
+  prediction + reasons**, building facts, owner-occupied vs absentee, neighborhood context, **☆ Like**.
 
 ## File map
 
 | File | Role |
 |------|------|
-| `index.html` | the whole app (Leaflet map, panels, leaderboard, valuation engine). ~880 lines. |
-| `build_data.py` | town scoring engine → `towns.geojson` + `town_detail.json`; augments neighborhoods (future + rent); writes manifest. |
-| `build_neighborhoods.py` | tracts→neighborhoods → `neighborhoods.geojson` + `neighborhoods_detail.json`. |
-| `curated.py` | curated tables: universities, transit expansion, coastal, vacation, employer, school tiers, **gov forms**. |
-| `fetch_*.py` | data fetchers (boundaries, population, transit, osm, osm_attractions, tracts, places). `fetch_acs.py` is legacy/unused (ACS needs a key). |
-| `data/*.geojson, *_detail.json, manifest.json` | generated app data (committed). |
-| `data/raw/` | downloaded sources (git-ignored). |
-| `README.md` | full methodology + sources. |
+| `index.html` | the whole app. ~1,150 lines. |
+| `update_listings.py` | **nightly updater**: prioritize → Redfin scrape → match → pre-listing → write listings/prelist/meta. |
+| `serve.py` | stdlib server: static + `POST /api/like` → `data/likes.json` + `GET /api/likes`. |
+| `com.drew.ma-map-update.plist` / `install_autoupdate.sh` | launchd 1 AM job + installer. |
+| `build_neighborhoods.py` | tracts→neighborhoods + **sub-town subscores**. |
+| `build_data.py` | town scoring; adds future/rent/sub to neighborhoods; manifest. |
+| `build_research.py` | turns a research-workflow result into `town_research.json` + `neighborhoods_research.json`. |
+| `.claude/research_workflow*.js` | the web-research workflow (one agent per in-budget town). |
+| `curated.py` | curated tables (universities, transit expansion, schools, gov forms…). |
+| `data/*.json, *.geojson` | generated app data (committed; `raw/` + `likes.json` git-ignored). |
+| `BUILD_PLAN.md` | internal plan/structure doc for this phase. |
 
 ## Data sources (all real, keyless/CORS-ok)
 
-TIGERweb (boundaries, decennial population), Zillow ZHVI + **ZORI rents**, MBTA GTFS,
-OpenStreetMap Overpass (POIs, places, streets), FHFA tract House Price Index, MassGIS
-Standardized Assessors' Parcels (live). Census ACS skipped (needs a key) → those criteria
-proxied; schools / employer / gov-form are curated tiers.
+TIGERweb, Census decennial, Zillow ZHVI + **ZORI rents**, MBTA GTFS, OSM Overpass, FHFA tract HPI,
+**MassGIS L3 Assessors' Parcels** (live — FY, last-sale, owner, rooms…), **Redfin gis-csv**
+(live listings), and **public web research** (cited per town). Census ACS skipped (needs a key).
 
-## Honest limitations (already surfaced in UI + README)
+## Honest limitations (surfaced in UI + README)
 
-- **Valuation engine is NOT a licensed appraisal** — no interior condition / renovation /
-  photo / private-comp data, so per-house error is real. **Deal flags are leads to
-  investigate, not guarantees.** Calibration constants (assessment ratio ≈ 0.95, ~2-yr
-  roll-forward) are documented assumptions in `index.html` (`ASR`, `ROLL_YEARS`).
-- Rent and some criteria (seasonal %, age, schools, employer) are proxies/curated, clearly flagged.
-- Scores rank *relative* opportunity within MA — a research starting point, not financial advice.
+- **Not a licensed appraisal.** No interior/condition/photo data → per-house error is real; deal &
+  pre-listing flags are **leads to investigate, not guarantees**. "Not listed" can mean "not found".
+- **Pre-listing is a prediction** from ownership tenure + absentee/out-of-state + redevelopment signals.
+- Sub-town **schools & safety are town-level** (schools = curated tier; safety = a labeled proxy, not
+  crime stats — sub-area crime isn't openly available). Parks/walk/transit/dining/appreciation are measured.
+- Calibration constants (`ASR≈0.95`, fiscal-year roll-forward) are documented assumptions in `index.html`.
 
 ## Suggested next steps (ideas, nothing pending)
 
-1. **Sharpen the valuation:** pull each town's assessment **fiscal year** + recent **sale
-   price/date** from MassGIS to replace the fixed 2-yr roll-forward and calibrate the ASR
-   per town; wire per-town **list-to-sale / days-on-market** into the offer model.
-2. Live **DESE school** accountability data + **DLS tax-rate** feed (currently curated/linked).
-3. Town/neighborhood **comparison view**; live **weight sliders** for the composite.
-4. Minor cleanup: `fhfa['counties']` is computed/exported by `build_neighborhoods.py` but
-   unused by `build_data.py` (harmless; from the audit).
+1. Dial `MAP_TARGET_HOMES` down toward ~100 once Drew's liked set defines the watch-list.
+2. Add a real keyless town-level **crime** feed if one surfaces; live **DESE school** accountability.
+3. Price-change / new-since-yesterday badges from `first_seen`/`last_seen` already tracked in `listings.json`.
+4. Town/neighborhood comparison view; live composite weight sliders.
 
 ## Context for tomorrow
 
-- Memory file (`~/.claude/projects/-Applications/memory/homebuying-profile.md`) has the full
-  feature history and Drew's preferences — it'll auto-load next session.
-- Two adversarial audit workflows were run this session; all confirmed findings were fixed.
-- The local dev server I used for verification (port 8766) is stopped; just run the command above.
+- Memory file (`~/.claude/projects/-Applications/memory/homebuying-profile.md`) holds the full feature
+  history + Drew's preferences — auto-loads next session.
+- The nightly job + research workflow are the two moving parts; everything else is static and committed.

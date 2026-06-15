@@ -1,6 +1,9 @@
 # Downloaded source data (large, regenerable via fetch_*.py)
 data/raw/
 
+# Liked homes — personal/runtime state (written by serve.py)
+data/likes.json
+
 # Python / OS cruft
 __pycache__/
 *.pyc

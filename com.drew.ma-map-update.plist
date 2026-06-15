@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.drew.ma-map-update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/drewmackin/ma-real-estate-opportunity-map/update_listings.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/drewmackin/ma-real-estate-opportunity-map</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MAP_SCHEDULED</key><string>1</string>
+    <key>MAP_TARGET_HOMES</key><string>500</string>
+    <key>MAP_MAX_REGIONS</key><string>45</string>
+  </dict>
+  <!-- 1:00 AM daily. If the Mac is asleep/off at 1 AM, launchd runs it at the next
+       wake/login; the once-per-day guard in update_listings.py keeps it from double-running. -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key>
+  <string>/Users/drewmackin/ma-real-estate-opportunity-map/data/raw/update.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/drewmackin/ma-real-estate-opportunity-map/data/raw/update.log</string>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+</dict>
+</plist>

@@ -277,14 +277,33 @@ def main():
     json.dump({"towns": town_appr, "counties": county_appr},
               open(os.path.join(RAW, "town_appr_fhfa.json"), "w"))
 
+    # raw signals for the per-neighborhood "which side of town is better" subscores
+    for h in neigh:
+        cc = h["cc"]
+        h["parks_raw"] = h["green_n"] + 8.0 * h["water_frac"]                       # parks + water access
+        h["food_raw"] = math.sqrt(cc.get("Cafe", 0) + cc.get("Restaurant", 0)
+                                  + cc.get("Bar", 0) + cc.get("Brewery", 0) + cc.get("Market", 0))
+        h["culture_raw"] = (cc.get("Museum", 0) + cc.get("Theater", 0) + cc.get("Gallery", 0)
+                            + cc.get("Arts center", 0) + 0.5 * cc.get("Historic site", 0))
+
     # statewide percentiles across neighborhoods
     P = {k: pct_ranks([h[v] for h in neigh]) for k, v in
-         {"appr": "appr5", "walk": "density", "amen": "amen_raw", "transit": "transit_raw", "wg": "watergreen_raw"}.items()}
+         {"appr": "appr5", "walk": "density", "amen": "amen_raw", "transit": "transit_raw", "wg": "watergreen_raw",
+          "parks": "parks_raw", "food": "food_raw", "culture": "culture_raw"}.items()}
     for i, h in enumerate(neigh):
         ap = P["appr"][i] if P["appr"][i] is not None else 50.0
         h["appr_pctl"] = round(ap, 1)
         h["score"] = round(0.34 * ap + 0.20 * (P["walk"][i] or 30) + 0.20 * (P["amen"][i] or 20)
                            + 0.16 * (P["transit"][i] or 0) + 0.10 * (P["wg"][i] or 20), 1)
+        # subscores (0-100, statewide-relative) — the dimensions that genuinely vary block to block
+        h["sub"] = {
+            "appr": round(ap),
+            "walk": round(P["walk"][i] if P["walk"][i] is not None else 30),
+            "transit": round(P["transit"][i] if P["transit"][i] is not None else 0),
+            "parks": round(P["parks"][i] if P["parks"][i] is not None else 0),
+            "dining": round(P["food"][i] if P["food"][i] is not None else 0),
+            "culture": round(P["culture"][i] if P["culture"][i] is not None else 0),
+        }
 
     # rank within town
     bytown = {}
@@ -396,6 +415,7 @@ def make_feature(h):
         "pop": h["pop"], "density": round(h["density"]) if h["density"] else None,
         "station_mi": h["station_mi"], "station_nm": h["station_nm"],
         "uni_mi": h["uni_mi"], "uni_nm": h["uni_nm"],
+        "sub": h.get("sub"),
         "insights": insights(h),
     }}
 
