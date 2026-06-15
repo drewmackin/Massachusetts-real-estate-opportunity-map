@@ -1058,13 +1058,14 @@ function rentEst(p){
 function rentYield(p){const r=rentEst(p),mv=estMarket(p);return(r&&mv)?(r*12/mv*100):null;}
 
 /* ---- address normalization (mirror of norm_addr() in update_listings.py) ---- */
-const ADDR_SUF=new Set("ST STREET AVE AVENUE AV RD ROAD DR DRIVE LN LANE CT COURT PL PLACE BLVD BOULEVARD TER TERR TERRACE CIR CIRCLE HWY HIGHWAY PKWY PARKWAY WAY SQ SQUARE ROW PATH RUN XING CROSSING TRL TRAIL PT POINT LOOP ALY ALLEY BND CV EXT PIKE PARK GRN GREEN COMMON N S E W NE NW SE SW".split(" "));
+const SUF_CANON={ST:"ST",STREET:"ST",AVE:"AVE",AV:"AVE",AVENUE:"AVE",RD:"RD",ROAD:"RD",DR:"DR",DRIVE:"DR",LN:"LN",LANE:"LN",CT:"CT",COURT:"CT",PL:"PL",PLACE:"PL",BLVD:"BLVD",BOULEVARD:"BLVD",TER:"TER",TERR:"TER",TERRACE:"TER",CIR:"CIR",CIRCLE:"CIR",HWY:"HWY",HIGHWAY:"HWY",PKWY:"PKWY",PARKWAY:"PKWY",WAY:"WAY",SQ:"SQ",SQUARE:"SQ",ROW:"ROW",PATH:"PATH",RUN:"RUN",XING:"XING",CROSSING:"XING",TRL:"TRL",TRAIL:"TRL",PT:"PT",POINT:"PT",LOOP:"LOOP",ALY:"ALY",ALLEY:"ALY",BND:"BND",CV:"CV",EXT:"EXT",PIKE:"PIKE",PARK:"PARK",GRN:"GRN",GREEN:"GREEN",COMMON:"COMMON"};
 function normAddr(full){
   let s=String(full||"").toUpperCase().replace(/\s+/g," ").trim().replace(/(#|\bAPT\b|\bUNIT\b|\bSTE\b|\bFL\b|\bFLOOR\b|\bRM\b|\bBLDG\b).*$/,"").trim();
   if(!s)return null;const toks=s.split(" ");const m=toks[0].match(/^(\d+)/);if(!m)return null;
-  let rest=toks.slice(1);while(rest.length&&ADDR_SUF.has(rest[rest.length-1]))rest=rest.slice(0,-1);
+  let rest=toks.slice(1).filter(Boolean);let suf="";
+  if(rest.length&&SUF_CANON[rest[rest.length-1]]){suf=SUF_CANON[rest[rest.length-1]];rest=rest.slice(0,-1);}
   const name=rest.filter(t=>/^[A-Z][A-Z0-9]*$/.test(t)).join(" ").replace(/[^A-Z0-9 ]/g,"").trim();
-  return name?m[1]+"|"+name:null;
+  return name?(m[1]+"|"+name+"|"+suf):null;
 }
 function parcelFull(p){return p.SITE_ADDR||((String(p.ADDR_NUM||"")+" "+String(p.FULL_STR||"")).trim());}
 
@@ -1421,7 +1422,7 @@ function bootError(e){document.querySelector("#sidebar .empty-hint").innerHTML=`
     j("./data/town_detail.json").then(d=>{TOWN_DETAIL=d||{};}),
     j("./data/neighborhoods_detail.json").then(d=>{NEIGH_DETAIL=d||{};}),
     // live listings + pre-listing predictions (nightly; may not exist before first run)
-    j("./data/listings.json").then(d=>{if(d&&d.by_addr){LISTINGS=d;LIST_META=d.updated;}}).catch(()=>{}),
+    j("./data/listings.json").then(d=>{if(d&&d.by_addr){const bl={};for(const k in d.by_addr){const r=d.by_addr[k];if(r.loc_id)bl[r.loc_id]=r;}LISTINGS={by_addr:d.by_addr,by_loc:bl};LIST_META=d.updated;}}).catch(()=>{}),
     j("./data/prelist.json").then(d=>{if(d&&d.by_key)PRELIST=d;}).catch(()=>{}),
     j("./data/town_research.json").then(d=>{TOWN_RESEARCH=d||{};}).catch(()=>{}),
     j("./data/neighborhoods_research.json").then(d=>{NEIGH_RESEARCH=d||{};}).catch(()=>{}),

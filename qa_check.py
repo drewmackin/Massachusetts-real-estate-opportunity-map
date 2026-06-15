@@ -136,6 +136,41 @@ calc = h.hexdigest()[:10]
 if manifest.get("v") != calc:
     hi(f"manifest stale: file={manifest.get('v')} computed={calc} (run bump_manifest)")
 
+# ---- LISTINGS: est/disc sanity (the deals board ranks on these) ----
+import re as _re
+n_est = 0
+for v in ba.values():
+    if v.get("est") is None: continue
+    n_est += 1
+    d = v.get("disc")   # est-without-disc is EXPECTED (low-confidence ests are intentionally not flagged)
+    addr = (v.get("addr") or ""); pt = (v.get("ptype") or "").lower()
+    if d is not None and not (-35 <= d <= 35): hi(f"listing {addr}: disc={d} out of ±35 (bad match leaked to deals)")
+    if _re.search(r"#|\bunit\b|\bapt\b", addr.lower()) or "condo" in pt or "co-op" in pt or "land" in pt:
+        hi(f"listing {addr} [{pt}]: condo/unit/land should NOT carry est/disc")
+    if v.get("price") and v["est"] and (v["est"] > 2.0*v["price"] or v["est"] < 0.5*v["price"]):
+        hi(f"listing {addr}: est ${v['est']:,} implausible vs list ${v['price']:,.0f} (bad parcel match)")
+print(f"listings with est/disc: {n_est}")
+for loc, v in pk.items():
+    if not (0 <= v.get("score", 0) <= 100): med(f"prelist {loc}: score {v.get('score')} out of range")
+    if not v.get("reasons"): low(f"prelist {loc}: no reasons")
+
+# ---- verify earlier QA fixes are still in place (regression guard) ----
+g_by_name = {p.get("name"): g for g, p in TP.items()}
+for nm in ("Amherst", "East Longmeadow", "Randolph", "Winthrop", "Bridgewater", "Agawam"):
+    g = g_by_name.get(nm); form = (TP.get(g, {}).get("gov") or {}).get("form", "") if g else ""
+    if "City" in form: hi(f"gov regression: {nm} = '{form}' (should be a Town)")
+wk = TP.get(g_by_name.get("Warwick"), {})
+if wk.get("scores", {}).get("transit", 0) > 50: hi(f"Warwick transit regression: {wk['scores'].get('transit')}")
+gf_hoods = {f["properties"]["name"] for f in neigh_geo["features"] if f["properties"]["town_geoid"] == g_by_name.get("Greenfield")}
+if "Turners Falls" in gf_hoods: hi("Greenfield 'Turners Falls' mislabel regression")
+RES_MUST = [("Oxford", "why", "headquarters of IPG", False), ("Oxford", "why", "manufacturing campus", True),
+            ("Marlborough", "vibe", "mill city", False), ("Ayer", "why", "Vitasoy", False),
+            ("Ayer", "why", "Nasoya", True), ("Hampden", "why", "near the MA state median", False)]
+for nm, fld, sub, want in RES_MUST:
+    g = g_by_name.get(nm); txt = (tres.get(g, {}) or {}).get(fld, "") if g else ""
+    if want and sub not in txt: med(f"research regression: {nm}.{fld} missing '{sub}'")
+    if (not want) and sub in txt: hi(f"research regression: {nm}.{fld} still contains '{sub}'")
+
 # ---- report ----
 print("\n=== FINDINGS ===")
 for label, lst in (("HIGH", HIGH), ("MED", MED), ("LOW", LOW)):

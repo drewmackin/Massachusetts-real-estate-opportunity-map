@@ -59,16 +59,21 @@ def http_get(url, headers=None, timeout=30):
     return r.status, data
 
 # ---- address normalization (MUST match the JS normAddr() in index.html) -----------------------
-SUFFIX = {"ST","STREET","AVE","AVENUE","AV","RD","ROAD","DR","DRIVE","LN","LANE","CT","COURT",
-          "PL","PLACE","BLVD","BOULEVARD","TER","TERR","TERRACE","CIR","CIRCLE","HWY","HIGHWAY",
-          "PKWY","PARKWAY","WAY","SQ","SQUARE","ROW","PATH","RUN","XING","CROSSING","TRL","TRAIL",
-          "PT","POINT","LOOP","ALY","ALLEY","BND","CV","EXT","PIKE","PARK","GRN","GREEN","COMMON"}
+# Canonicalize the street suffix and KEEP it (so 'Grove Ave' != 'Grove St', but 'St'=='Street').
+SUF_CANON = {"ST":"ST","STREET":"ST","AVE":"AVE","AV":"AVE","AVENUE":"AVE","RD":"RD","ROAD":"RD",
+    "DR":"DR","DRIVE":"DR","LN":"LN","LANE":"LN","CT":"CT","COURT":"CT","PL":"PL","PLACE":"PL",
+    "BLVD":"BLVD","BOULEVARD":"BLVD","TER":"TER","TERR":"TER","TERRACE":"TER","CIR":"CIR","CIRCLE":"CIR",
+    "HWY":"HWY","HIGHWAY":"HWY","PKWY":"PKWY","PARKWAY":"PKWY","WAY":"WAY","SQ":"SQ","SQUARE":"SQ",
+    "ROW":"ROW","PATH":"PATH","RUN":"RUN","XING":"XING","CROSSING":"XING","TRL":"TRL","TRAIL":"TRL",
+    "PT":"PT","POINT":"PT","LOOP":"LOOP","ALY":"ALY","ALLEY":"ALY","BND":"BND","CV":"CV","EXT":"EXT",
+    "PIKE":"PIKE","PARK":"PARK","GRN":"GRN","GREEN":"GREEN","COMMON":"COMMON"}
 UNIT_RE = re.compile(r"(#|\bAPT\b|\bUNIT\b|\bSTE\b|\bFL\b|\bFLOOR\b|\bRM\b|\bBLDG\b).*$")
 def norm_addr(full, zip5=None):
-    """Return 'num|streetname' or None. MassGIS parcels often lack ZIP and use number
-    ranges ('194 196 UNION ST'), so we key on house-number + street NAME only (suffix &
-    unit dropped). Cross-town collisions are handled by prefixing the town_geoid at storage
-    time. MUST stay in lock-step with normAddr() in index.html."""
+    """Return 'num|streetname|suffix' or None. MassGIS parcels often lack ZIP and use number
+    ranges ('194 196 UNION ST'), so we key on house-number + street name + a CANONICAL suffix.
+    Keeping the suffix prevents Grove Ave / Grove St collisions; canonicalizing it keeps
+    St==Street. Cross-town collisions handled by the town_geoid prefix at storage time.
+    MUST stay in lock-step with normAddr() in index.html."""
     s = re.sub(r"\s+", " ", str(full or "")).strip().upper()
     s = UNIT_RE.sub("", s).strip()
     if not s: return None
@@ -76,14 +81,15 @@ def norm_addr(full, zip5=None):
     m = re.match(r"^(\d+)", toks[0])           # leading house number (12A -> 12)
     if not m: return None
     num = m.group(1)
-    rest = toks[1:]
-    while rest and (rest[-1] in SUFFIX or rest[-1] in {"N","S","E","W","NE","NW","SE","SW"}):
-        rest = rest[:-1]                        # drop trailing suffix/dir so 'ST'=='STREET'
-    # street name = remaining alpha tokens (skip stray numbers like the '196' in a range)
+    rest = [t for t in toks[1:] if t]
+    suf = ""
+    if rest and rest[-1] in SUF_CANON:
+        suf = SUF_CANON[rest[-1]]; rest = rest[:-1]
+    # street name = remaining alpha/dir tokens (skip stray numbers like the '196' in a range)
     name = " ".join(t for t in rest if re.match(r"^[A-Z][A-Z0-9]*$", t))
     name = re.sub(r"[^A-Z0-9 ]", "", name).strip()
     if not name: return None
-    return "%s|%s" % (num, name)
+    return "%s|%s|%s" % (num, name, suf)
 
 def parcel_full(p):
     return p.get("SITE_ADDR") or ((str(p.get("ADDR_NUM") or "")+" "+str(p.get("FULL_STR") or "")).strip())
@@ -314,6 +320,21 @@ def est_market(p, psf, rate):
             sv = max(0.6 * base, min(1.8 * base, lp * ((1 + rate) ** age)))
             return w * sv + (1 - w) * base
     return base
+def confidence_py(p, psf, rate):
+    """high/med/low — mirrors confidence() in index.html. Gates the deal flag so we don't
+    cry 'deal' on a shaky estimate."""
+    lp = float(p.get("LS_PRICE") or 0); a0 = float(p.get("TOTAL_VAL") or 0); y = sale_year_int(p.get("LS_DATE"))
+    if lp > 0 and y and 0.45 * a0 <= lp <= 3.0 * a0 and (NOWY - y) <= 3: return "high"
+    a = rolled_assessed(p, rate)
+    if a is None: return "low"
+    sqft = float(p.get("BLD_AREA") or 0)
+    if psf and is_sf(p) and sqft >= 400:
+        yr = parse_year(p.get("YEAR_BUILT")); age = (NOWY - yr) if yr else 0
+        age_adj = 0.92 if age > 100 else 0.96 if age > 70 else 0.99 if age > 40 else 1.0
+        size_adj = 0.88 if sqft > 4500 else 0.94 if sqft > 3200 else 1.05 if sqft < 900 else 1.0
+        b = sqft * psf * age_adj * size_adj
+        d = abs(a - b) / ((a + b) / 2); return "high" if d <= 0.12 else "med" if d <= 0.28 else "low"
+    return "med" if is_res(p) else "low"
 
 PRELIST_MIN = int(os.environ.get("MAP_PRELIST_MIN", "55"))   # flag ~top 2-6% (notably elevated odds)
 def prelist_score(p, town_appr):
@@ -398,8 +419,7 @@ def main():
     def recent(rec):
         try: return (TODAY - datetime.strptime(rec.get("last_seen", ""), "%Y-%m-%d").date()).days <= KEEP_DAYS
         except Exception: return False
-    by_addr = {k: v for k, v in prev_addr.items() if recent(v)}
-    by_loc  = {k: v for k, v in (prev.get("by_loc") or {}).items() if recent(v)}
+    by_addr = {k: v for k, v in prev_addr.items() if recent(v)}   # by_loc is derived client-side from this
     prelist = dict(load_json(os.path.join(DATA, "prelist.json"), {}).get("by_key") or {})
 
     regions.sort(key=lambda r: region_priority(r, state, liked_keys), reverse=True)
@@ -427,7 +447,6 @@ def main():
 
         # refresh this region: drop its stale entries, then re-add what we just found
         by_addr = {k: v for k, v in by_addr.items() if v.get("region") != rkey}
-        by_loc  = {k: v for k, v in by_loc.items() if v.get("region") != rkey}
         prelist = {k: v for k, v in prelist.items() if v.get("region") != rkey}
 
         by_key = {}
@@ -456,12 +475,16 @@ def main():
                 is_condo = "condo" in ptype or "co-op" in ptype or str(p.get("USE_CODE") or "")[:3] == "102"
                 is_land = "land" in ptype or "lot" in ptype
                 if L.get("price") and not is_unit and not is_condo and not is_land:
-                    ev = est_market(p, psf, rate)
-                    if ev:
-                        disc = round((ev - L["price"]) / ev * 100)   # +% = listed below our est
-                        if -35 <= disc <= 35:                        # implausible => bad address match, drop
-                            rec["est"] = int(round(ev)); rec["disc"] = disc
-                by_loc[p.get("LOC_ID")] = rec; matched_count += 1
+                    ev = est_market(p, psf, rate); price = L["price"]
+                    # only trust the est if it's in a believable band of the asking price; far
+                    # outside => the listing matched the wrong parcel (e.g. new-construction lot).
+                    if ev and 0.55 * price <= ev <= 1.8 * price:
+                        rec["est"] = int(round(ev))
+                        conf = confidence_py(p, psf, rate); rec["conf"] = conf
+                        disc = round((ev - price) / ev * 100)        # +% = listed below our est
+                        if conf != "low" and -35 <= disc <= 35:      # flag a deal only on a trustworthy est
+                            rec["disc"] = disc
+                matched_count += 1
             by_addr[akey] = rec
             run_surfaced += 1
 
@@ -490,8 +513,7 @@ def main():
 
     updated = datetime.now().isoformat(timespec="seconds")
     write_json(os.path.join(DATA, "listings.json"),
-               {"updated": updated, "regions": [u["key"] for u in used],
-                "by_loc": by_loc, "by_addr": by_addr})
+               {"updated": updated, "regions": [u["key"] for u in used], "by_addr": by_addr})
     write_json(os.path.join(DATA, "prelist.json"),
                {"updated": updated, "by_key": prelist})
     meta = {"updated": updated, "target_homes": TARGET_HOMES, "regions_scraped": len(used),
