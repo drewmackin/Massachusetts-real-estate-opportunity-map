@@ -300,6 +300,10 @@
   .deals-empty{grid-column:1/-1;color:var(--muted);font-size:13px;line-height:1.6;padding:34px 10px;text-align:center}
   .deals-sec{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:700;margin-top:10px}
   .deals-note{grid-column:1/-1;color:var(--muted2);font-size:11px;line-height:1.55;border-top:1px solid var(--line2);padding-top:12px;margin-top:6px}
+  .watch-sec{color:var(--gold);border-bottom:1px solid rgba(251,191,36,.28);padding-bottom:8px}
+  .watch-sec .pill{background:rgba(251,191,36,.18);color:#fcd34d}
+  .watch-card{border-color:rgba(251,191,36,.38);background:linear-gradient(135deg,rgba(251,191,36,.07),var(--panel2))}
+  .watch-card:hover{border-color:var(--gold)}
 
   .leaflet-popup-content-wrapper{background:var(--glass-solid);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
   .leaflet-popup-content{margin:10px 13px;font-size:12.5px;line-height:1.45}
@@ -626,17 +630,22 @@ function dealOpen(geoid,lat,lon){closeDeals();const tp=TOWN_PROPS[geoid];if(tp)d
 function closeDeals(){const m=document.getElementById("dealsModal");if(m){m.classList.remove("on");m.innerHTML="";}}
 let dealTownFilter="all",dealSort="disc";
 function activeDeals(){return Object.values(LISTINGS.by_addr||{}).filter(l=>l.status==="active"&&l.price&&l.price>=120000&&l.price<=620000&&!/land|lot/i.test(l.ptype||""));}
+// daily watch-list: affordable homes in the priority towns (Boston/Chelsea/Cambridge/Brookline ≤ $500k)
+function watchSet(){return new Set(LISTINGS.watch_geoids||[]);}
+function isWatch(l){const ws=watchSet(),mx=LISTINGS.watch_max||500000;
+  return ws.has(l.town_geoid)&&l.status==="active"&&l.price&&l.price>=120000&&l.price<=mx
+    &&!/land|lot/i.test(l.ptype||"")&&!/pkg|parking|garage|\bpk:/i.test(l.addr||"");}
 function dealEnrich(l){const tp=TOWN_PROPS[l.town_geoid]||{};
   const rent=(tp.rent&&tp.price&&l.est)?Math.round(tp.rent*Math.pow(l.est/tp.price,0.85)/25)*25:null;
   const yld=(rent&&l.price)?(rent*12/l.price*100):null;
   const psf=(l.price&&l.sqft)?Math.round(l.price/l.sqft):null;
   return {rent,yld,psf};}
-function dealCard(l){const e=dealEnrich(l);
-  const facts=[l.beds?Math.round(l.beds)+" bd":"",l.baths?l.baths+" ba":"",l.sqft?Math.round(l.sqft).toLocaleString()+" sqft":"",l.year?"built "+Math.round(l.year):"",e.psf?"$"+e.psf+"/sqft":"",l.dom!=null?l.dom+"d on mkt":""].filter(Boolean).join(" · ");
+function dealCard(l,watch){const e=dealEnrich(l);
+  const facts=[l.beds?Math.round(l.beds)+" bd":"",l.baths?l.baths+" ba":"",l.sqft?Math.round(l.sqft).toLocaleString()+" sqft":"",l.ptype?esch(l.ptype.replace(/Residential/i,"").replace("/Co-op","").trim()):"",l.year?"built "+Math.round(l.year):"",e.psf?"$"+e.psf+"/sqft":"",l.dom!=null?l.dom+"d on mkt":""].filter(Boolean).join(" · ");
   const cityX=(l.city&&l.city.toLowerCase()!==townName(l.town_geoid).toLowerCase())?" · "+esch(l.city):"";
-  return `<div class="deal-card" onclick="dealOpen('${l.town_geoid}',${l.lat||"null"},${l.lon||"null"})">
+  return `<div class="deal-card${watch?" watch-card":""}" onclick="dealOpen('${l.town_geoid}',${l.lat||"null"},${l.lon||"null"})">
     <div class="dc-top"><div style="min-width:0"><div class="dc-addr">${esch(l.addr)}</div><div class="dc-sub">${esch(townName(l.town_geoid))}${cityX}${l.status==="coming_soon"?' · <span style="color:#fbbf24">coming soon</span>':""}</div></div>
-      ${(l.disc!=null&&l.disc>=3)?`<div class="dc-disc">−${l.disc}%<small>vs est</small></div>`:""}</div>
+      ${(l.disc!=null&&l.disc>=3)?`<div class="dc-disc">−${l.disc}%<small>vs est</small></div>`:(watch?`<div class="dc-disc" style="color:var(--gold);font-size:15px">⭐<small>watch</small></div>`:"")}</div>
     <div class="dc-prices"><div><div class="dc-list">${fmtPrice(l.price)}</div><div class="dc-lbl">list price</div></div>
       ${l.est?`<div><div class="dc-est">${fmtPrice(l.est)}</div><div class="dc-lbl">our est${l.conf?" · "+l.conf:""}</div></div>`:""}
       ${e.rent?`<div><div class="dc-rent">$${e.rent.toLocaleString()}/mo</div><div class="dc-lbl">est rent${e.yld?" · "+e.yld.toFixed(1)+"% yld":""}</div></div>`:""}</div>
@@ -648,9 +657,12 @@ function preCard(p){return `<div class="deal-card" onclick="dealOpen('${p.town_g
     ${p.reasons&&p.reasons.length?`<div class="dc-facts" style="border-top:0;padding-top:0">${esch(p.reasons[0])}</div>`:""}
     <div class="dc-actions"><span class="dc-link" style="color:var(--muted2)">off-market · predicted</span><span class="dc-map">Show on map →</span></div></div>`;}
 function populateDealTowns(){const sel=document.getElementById("dealTown");if(!sel)return;
-  const flagged=activeDeals().filter(l=>l.disc!=null&&l.disc>=3);const cnt={};flagged.forEach(l=>cnt[l.town_geoid]=(cnt[l.town_geoid]||0)+1);
-  const towns=Object.keys(cnt).sort((a,b)=>townName(a).localeCompare(townName(b)));
-  sel.innerHTML=`<option value="all">📍 All towns · ${flagged.length} deals</option>`+towns.map(g=>`<option value="${g}">${esch(townName(g))} · ${cnt[g]}</option>`).join("");
+  const dcnt={},wcnt={};
+  activeDeals().filter(l=>l.disc!=null&&l.disc>=3&&!isWatch(l)).forEach(l=>dcnt[l.town_geoid]=(dcnt[l.town_geoid]||0)+1);
+  Object.values(LISTINGS.by_addr||{}).filter(isWatch).forEach(l=>wcnt[l.town_geoid]=(wcnt[l.town_geoid]||0)+1);
+  const towns=[...new Set([...Object.keys(dcnt),...Object.keys(wcnt)])].sort((a,b)=>townName(a).localeCompare(townName(b)));
+  sel.innerHTML=`<option value="all">📍 All towns</option>`+towns.map(g=>{const w=wcnt[g],d=dcnt[g];
+    const tag=(w?` · ⭐${w}`:"")+(d?` · ${d} deal${d>1?"s":""}`:"");return `<option value="${g}">${esch(townName(g))}${tag}</option>`;}).join("");
   sel.value=dealTownFilter;}
 function dealSetTown(v){dealTownFilter=v;renderDealsBody();}
 function dealSetSort(v){dealSort=v;renderDealsBody();}
@@ -658,17 +670,23 @@ function renderDealsBody(){const body=document.getElementById("dealsBody");if(!b
   let deals=activeDeals();if(dealTownFilter!=="all")deals=deals.filter(l=>l.town_geoid===dealTownFilter);
   const S={disc:(a,b)=>b.disc-a.disc,price:(a,b)=>a.price-b.price,dom:(a,b)=>(a.dom??999)-(b.dom??999),yield:(a,b)=>(dealEnrich(b).yld||0)-(dealEnrich(a).yld||0)};
   const sorter=S[dealSort]||S.disc;
-  const flagged=deals.filter(l=>l.est&&l.disc!=null&&l.disc>=3).sort(sorter);
+  // ⭐ daily watch-list (priority towns) pinned at top
+  const watch=deals.filter(isWatch).sort(dealSort==="price"?S.price:dealSort==="disc"?S.dom:sorter);
+  const rest=deals.filter(l=>!isWatch(l));
+  const flagged=rest.filter(l=>l.est&&l.disc!=null&&l.disc>=3).sort(sorter);
   let h="";
-  if(flagged.length)h+=flagged.slice(0,80).map(dealCard).join("");
-  else{const others=[...deals].sort(dealSort==="disc"?S.dom:sorter).slice(0,40);
-    h+=others.length?(`<div class="deals-sec">In-budget listings${dealTownFilter==="all"?"":" in "+esch(townName(dealTownFilter))} — no clear below-estimate deals here yet</div>`+others.map(dealCard).join("")):
+  if(watch.length){const ts=[...new Set(watch.map(l=>townName(l.town_geoid)))].slice(0,4).join(" · ");
+    h+=`<div class="deals-sec watch-sec">⭐ Daily watch-list — ${esch(ts)} · ≤ $${Math.round((LISTINGS.watch_max||500000)/1000)}k <span class="pill">${watch.length}</span></div>`;
+    h+=watch.slice(0,48).map(l=>dealCard(l,true)).join("");}
+  if(flagged.length)h+=`<div class="deals-sec">Best value for sale — listed below our estimate <span class="pill">${flagged.length}</span></div>`+flagged.slice(0,80).map(l=>dealCard(l)).join("");
+  else if(!watch.length){const others=[...rest].sort(dealSort==="disc"?S.dom:sorter).slice(0,40);
+    h+=others.length?(`<div class="deals-sec">In-budget listings${dealTownFilter==="all"?"":" in "+esch(townName(dealTownFilter))} — no clear below-estimate deals here yet</div>`+others.map(l=>dealCard(l)).join("")):
       `<div class="deals-empty">No in-budget listings loaded for ${dealTownFilter==="all"?"the covered areas":esch(townName(dealTownFilter))} yet — the nightly job rotates through more towns each night.</div>`;}
   let pre=Object.values(PRELIST.by_key||{}).filter(p=>{const tp=TOWN_PROPS[p.town_geoid];return tp&&(tp.budget_fit==="in"||tp.budget_fit==="below");});
   if(dealTownFilter!=="all")pre=pre.filter(p=>p.town_geoid===dealTownFilter);
   pre.sort((a,b)=>b.score-a.score);pre=pre.slice(0,dealTownFilter==="all"?6:10);
   if(pre.length)h+=`<div class="deals-sec">◇ Likely to list soon · off-market${dealTownFilter==="all"?"":" in "+esch(townName(dealTownFilter))}</div>`+pre.map(preCard).join("");
-  h+=`<div class="deals-note">List price vs our estimated market value (MassGIS assessor data + this map's valuation engine; a deal is flagged only when our estimate is confident). <b style="color:var(--buy)">−%</b> = listed under our estimate — a lead to investigate, verify condition. Listings via Redfin's public feed; "Show on map" zooms to the home so you can open its full detail.</div>`;
+  h+=`<div class="deals-note"><b style="color:var(--gold)">⭐ Daily watch-list</b> scans Boston, Chelsea, Cambridge &amp; Brookline every night for homes, condos &amp; townhouses ≤ $${Math.round((LISTINGS.watch_max||500000)/1000)}k. Other deals show list price vs our estimated market value (flagged only when the estimate is confident). <b style="color:var(--buy)">−%</b> = listed under our estimate — a lead to investigate, verify condition. Listings via Redfin's public feed; "Show on map" zooms to the home.</div>`;
   body.innerHTML=h;}
 function showDeals(){dealTownFilter="all";dealSort="disc";
   const m=document.getElementById("dealsModal");m.classList.add("on");
@@ -1470,7 +1488,7 @@ function bootError(e){document.querySelector("#sidebar .empty-hint").innerHTML=`
     j("./data/town_detail.json").then(d=>{TOWN_DETAIL=d||{};}),
     j("./data/neighborhoods_detail.json").then(d=>{NEIGH_DETAIL=d||{};}),
     // live listings + pre-listing predictions (nightly; may not exist before first run)
-    j("./data/listings.json").then(d=>{if(d&&d.by_addr){const bl={};for(const k in d.by_addr){const r=d.by_addr[k];if(r.loc_id)bl[r.loc_id]=r;}LISTINGS={by_addr:d.by_addr,by_loc:bl};LIST_META=d.updated;}}).catch(()=>{}),
+    j("./data/listings.json").then(d=>{if(d&&d.by_addr){const bl={};for(const k in d.by_addr){const r=d.by_addr[k];if(r.loc_id)bl[r.loc_id]=r;}LISTINGS={by_addr:d.by_addr,by_loc:bl,watch_geoids:d.watch_geoids||[],watch_max:d.watch_max||500000};LIST_META=d.updated;}}).catch(()=>{}),
     j("./data/prelist.json").then(d=>{if(d&&d.by_key)PRELIST=d;}).catch(()=>{}),
     j("./data/town_research.json").then(d=>{TOWN_RESEARCH=d||{};}).catch(()=>{}),
     j("./data/neighborhoods_research.json").then(d=>{NEIGH_RESEARCH=d||{};}).catch(()=>{}),

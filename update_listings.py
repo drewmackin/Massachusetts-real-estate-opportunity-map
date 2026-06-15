@@ -36,6 +36,10 @@ ONLY_INBUDGET  = os.environ.get("MAP_ALL_TOWNS", "0") != "1"      # default: in/
 COMPOSITE_MIN  = float(os.environ.get("MAP_COMPOSITE_MIN", "40")) # Drew's "40+" rule
 PRELIST_CAP    = int(os.environ.get("MAP_PRELIST_CAP", "2500"))   # max pre-listing flags to store
 KEEP_DAYS      = int(os.environ.get("MAP_KEEP_DAYS", "21"))       # drop listings not re-seen within N days
+# daily WATCH-LIST: always scan these towns for affordable homes, pinned to the top of the deals menu
+WATCH_TOWNS    = [t.strip() for t in os.environ.get("MAP_WATCH_TOWNS", "Boston,Chelsea,Cambridge,Brookline").split(",") if t.strip()]
+WATCH_MAX      = int(os.environ.get("MAP_WATCH_MAX", "500000"))   # ceiling for the watch-list
+WATCH_MIN      = int(os.environ.get("MAP_WATCH_MIN", "120000"))   # floor (drops parking spaces / junk)
 VERBOSE        = os.environ.get("MAP_VERBOSE", "1") == "1"
 
 PARCEL_URL  = "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/L3_Parcels_FeatureService_4326/FeatureServer/1/query"
@@ -161,59 +165,58 @@ def region_priority(r, state, liked_keys):
     return p
 
 # ---- scrape: Redfin active + coming-soon by polygon -------------------------------------------
-def redfin_poly(bbox):
+def _poly_str(bbox):
     w,s,e,n = bbox
-    poly = "%f %f,%f %f,%f %f,%f %f,%f %f" % (w,s, e,s, e,n, w,n, w,s)
-    qs = urllib.parse.urlencode({
-        "al":"1","num_homes":"350","ord":"redfin-recommended-asc","page_number":"1",
-        "sf":"1,2,3,5,6,7","status":"9","uipt":"1,2,3,4,5,6,7,8","v":"8","poly":poly})
-    url = REDFIN_CSV + "?" + qs
+    return "%f %f,%f %f,%f %f,%f %f,%f %f" % (w,s, e,s, e,n, w,n, w,s)
+def _redfin_rows(qs):
     hdr = {"User-Agent":UA, "Accept":"text/csv,*/*", "Accept-Language":"en-US,en;q=0.9"}
-    st, body = http_get(url, hdr)
+    st, body = http_get(REDFIN_CSV + "?" + qs, hdr)
     if st != 200:
         raise RuntimeError("redfin HTTP %s" % st)
-    out = []
-    text = body.decode("utf-8","replace")
-    # skip the MLS-disclaimer preamble lines that precede the CSV header
-    lines = text.splitlines()
+    lines = body.decode("utf-8","replace").splitlines()
     hi = next((i for i,l in enumerate(lines) if l.upper().startswith("SALE TYPE,")), None)
     if hi is None:                              # no CSV header => soft block / markup change, not "0 listings"
         raise RuntimeError("redfin: no CSV header (blocked? len=%d)" % len(body))
-    rdr = csv.DictReader(io.StringIO("\n".join(lines[hi:])))
-    for row in rdr:
-        addr = (row.get("ADDRESS") or "").strip()
-        if not addr: continue
-        if (row.get("SOLD DATE") or "").strip(): continue       # defensive: skip solds
-        dom_raw = (row.get("DAYS ON MARKET") or "").strip()
-        coming = "PRE ON-MARKET" in dom_raw.upper() or "COMING" in dom_raw.upper()
-        status = "coming_soon" if coming else "active"
-        def num(x):
-            try: return float(re.sub(r"[^0-9.]","", str(row.get(x) or "")) or 0) or None
-            except Exception: return None
-        def domv():
-            try: return int(float(dom_raw))
-            except Exception: return None
-        # URL / lat / lon column names vary; find them robustly
-        url=""; lat=None; lon=None
-        for kcol, vcol in row.items():
-            kk=(kcol or "").upper().strip(); vv=(vcol or "").strip()
-            if not url and "URL" in kk and vv.startswith("http"): url=vv
-            elif kk=="LATITUDE":
-                try: lat=float(vv)
-                except Exception: pass
-            elif kk=="LONGITUDE":
-                try: lon=float(vv)
-                except Exception: pass
-        out.append({
-            "addr": addr, "city": (row.get("CITY") or "").strip(),
+    return list(csv.DictReader(io.StringIO("\n".join(lines[hi:]))))
+def _row_to_rec(row):
+    addr = (row.get("ADDRESS") or "").strip()
+    if not addr: return None
+    if (row.get("SOLD DATE") or "").strip(): return None        # defensive: skip solds
+    dom_raw = (row.get("DAYS ON MARKET") or "").strip()
+    coming = "PRE ON-MARKET" in dom_raw.upper() or "COMING" in dom_raw.upper()
+    def num(x):
+        try: return float(re.sub(r"[^0-9.]","", str(row.get(x) or "")) or 0) or None
+        except Exception: return None
+    url=""; lat=None; lon=None
+    for kcol, vcol in row.items():
+        kk=(kcol or "").upper().strip(); vv=(vcol or "").strip()
+        if not url and "URL" in kk and vv.startswith("http"): url=vv
+        elif kk=="LATITUDE":
+            try: lat=float(vv)
+            except Exception: pass
+        elif kk=="LONGITUDE":
+            try: lon=float(vv)
+            except Exception: pass
+    try: dom = int(float(dom_raw))
+    except Exception: dom = None
+    return {"addr": addr, "city": (row.get("CITY") or "").strip(),
             "zip": (row.get("ZIP OR POSTAL CODE") or "").strip()[:5],
             "price": num("PRICE"), "beds": num("BEDS"), "baths": num("BATHS"),
             "sqft": num("SQUARE FEET"), "year": num("YEAR BUILT"),
             "ptype": (row.get("PROPERTY TYPE") or "").strip(),
-            "dom": domv(), "status": status, "url": url, "lat": lat, "lon": lon,
-            "src": "redfin",
-        })
-    return out
+            "dom": dom, "status": ("coming_soon" if coming else "active"),
+            "url": url, "lat": lat, "lon": lon, "src": "redfin"}
+def redfin_poly(bbox):
+    qs = urllib.parse.urlencode({
+        "al":"1","num_homes":"350","ord":"redfin-recommended-asc","page_number":"1",
+        "sf":"1,2,3,5,6,7","status":"9","uipt":"1,2,3,4,5,6,7,8","v":"8","poly":_poly_str(bbox)})
+    return [r for r in (_row_to_rec(row) for row in _redfin_rows(qs)) if r]
+def redfin_watch(bbox):
+    """Affordable homes/condos/townhouses in a watch town: price-capped, newest first."""
+    qs = urllib.parse.urlencode({
+        "al":"1","num_homes":"350","ord":"days-on-redfin-asc","page_number":"1",
+        "sf":"1,2,3,5","status":"9","uipt":"1,2,3,5","max_price":str(WATCH_MAX),"v":"8","poly":_poly_str(bbox)})
+    return [r for r in (_row_to_rec(row) for row in _redfin_rows(qs)) if r]
 
 # ---- parcels for a region (for matching + pre-listing) ----------------------------------------
 PARCEL_FIELDS = ("LOC_ID,TOTAL_VAL,LAND_VAL,BLDG_VAL,YEAR_BUILT,USE_CODE,SITE_ADDR,ADDR_NUM,"
@@ -379,6 +382,42 @@ def prelist_score(p, town_appr):
     # rank reasons by the signal strength order they were added isn't ideal; keep strongest first
     return s, reasons[:3]
 
+# ---- daily watch-list scan of the priority towns ---------------------------------------------
+def scrape_watch_towns(prev_addr):
+    """Scan WATCH_TOWNS every run for residential homes/condos/townhouses in [WATCH_MIN, WATCH_MAX],
+    returning {akey: rec(watch=True)} to pin at the top of the deals menu. No parcel/est needed."""
+    out = {}; used = []
+    try:
+        feats = {f["properties"]["name"]: f for f in json.load(open(os.path.join(DATA, "towns.geojson")))["features"]}
+    except Exception:
+        return out, used
+    for name in WATCH_TOWNS:
+        f = feats.get(name)
+        if not f: continue
+        geoid = f["properties"]["geoid"]; bb = bbox_of(f["geometry"])
+        if not bb: continue
+        try:
+            rows = redfin_watch(bb)
+        except Exception as e:
+            log("  watch %-12s FAILED %r" % (name, e)); continue
+        time.sleep(REQ_SLEEP)
+        rkey = geoid + "|__watch__"; kept = 0
+        for L in rows:
+            pt = (L.get("ptype") or "").lower(); a = (L.get("addr") or "").lower(); price = L.get("price") or 0
+            if "land" in pt or "lot" in pt: continue                       # not a home
+            if re.search(r"pkg|parking|garage|\bpk:", a): continue          # drop parking spaces
+            if not (WATCH_MIN <= price <= WATCH_MAX): continue
+            k = norm_addr(L.get("addr"), L.get("zip"))
+            if not k: continue
+            akey = geoid + "#" + k
+            rec = dict(L); rec["watch"] = True; rec["town_geoid"] = geoid; rec["region"] = rkey
+            rec["first_seen"] = (prev_addr.get(akey) or {}).get("first_seen") or TODAY.isoformat()
+            rec["last_seen"] = TODAY.isoformat()
+            out[akey] = rec; kept += 1
+        used.append({"key": rkey, "name": name, "town": name, "listings": kept, "watch": True})
+        log("  watch %-12s kept=%d / %d scraped" % (name, kept, len(rows)))
+    return out, used
+
 # ---- main -------------------------------------------------------------------------------------
 LAST_RUN = os.path.join(RAW, "last_run.txt")
 def already_ran_today():
@@ -426,6 +465,18 @@ def main():
 
     used = []; errors = []; src_counts = {"redfin": 0}; matched_count = 0
     run_surfaced = 0     # listings + new pre-listing flags found THIS run (drives the nightly budget)
+
+    # daily WATCH-LIST: always scan the priority towns (e.g. Boston/Chelsea/Cambridge/Brookline)
+    # for affordable homes, pinned to the top of the deals menu. Runs every night, regardless of rotation.
+    by_addr = {k: v for k, v in by_addr.items() if not str(v.get("region", "")).endswith("__watch__")}
+    watch_geoids = []
+    try:
+        watch_recs, watch_used = scrape_watch_towns(prev_addr)
+        by_addr.update(watch_recs); used.extend(watch_used)
+        watch_geoids = [u["key"].split("|")[0] for u in watch_used]
+        log("watch-list: %d listings across %d towns" % (len(watch_recs), len(watch_used)))
+    except Exception as e:
+        errors.append("watch: %r" % e)
 
     for r in regions:
         if len(used) >= MAX_REGIONS or (run_surfaced >= TARGET_HOMES and len(used) >= MIN_REGIONS):
@@ -513,7 +564,8 @@ def main():
 
     updated = datetime.now().isoformat(timespec="seconds")
     write_json(os.path.join(DATA, "listings.json"),
-               {"updated": updated, "regions": [u["key"] for u in used], "by_addr": by_addr})
+               {"updated": updated, "regions": [u["key"] for u in used],
+                "watch_geoids": watch_geoids, "watch_max": WATCH_MAX, "by_addr": by_addr})
     write_json(os.path.join(DATA, "prelist.json"),
                {"updated": updated, "by_key": prelist})
     meta = {"updated": updated, "target_homes": TARGET_HOMES, "regions_scraped": len(used),
