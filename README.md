@@ -196,9 +196,11 @@ reputation, recent market/development notes, and a character blurb per neighborh
 
 ## Statewide views
 
-- **🏘 Best in-budget hoods** (toolbar) — the top 40 neighborhoods across every
-  town where a typical home is ≤ $600k, lit up on the map and ranked in a
-  leaderboard. Tap any to drill straight in.
+- **🔥 Best market deals** (toolbar) — a full-screen menu of in-budget homes *for sale now*,
+  ranked by how far the list price sits **below our estimate**. Each rich card shows list price ·
+  our estimate + confidence · est. rent + gross yield · beds/baths/sqft/year/$psf/days-on-market ·
+  a Redfin link · "Show on map". **Filter by town** with the selector and **sort** by discount /
+  price / newest / rent yield. Includes a "◇ likely to list soon" off-market watch-list.
 - **Budget filter** (All / ≤$600k / $400–600k / ★ Sweet) on the town layer.
 
 ## ⚡ Future potential (forward-looking)

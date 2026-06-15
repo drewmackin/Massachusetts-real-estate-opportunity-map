@@ -268,6 +268,39 @@
   .hm-note{font-size:11px;color:var(--muted2);line-height:1.5;margin-top:8px}
   @media(max-width:820px){.hm-body{grid-template-columns:1fr}.hm{height:92vh;width:96vw}}
 
+  /* best-market-deals overlay menu */
+  #dealsModal{position:fixed;inset:0;z-index:3000;display:none;align-items:center;justify-content:center;
+    background:rgba(4,6,10,.66);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);padding:3vh 2vw}
+  #dealsModal.on{display:flex;animation:hmfade .18s ease}
+  #dealsModal .hm-top{flex-wrap:wrap}
+  .deal-sel{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;
+    padding:8px 11px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;max-width:210px}
+  .deal-sel:hover{border-color:var(--accent)}
+  .dealsbody{flex:1;overflow-y:auto;padding:18px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(312px,1fr));
+    gap:13px;align-content:start;scrollbar-width:thin;scrollbar-color:#2a3543 transparent}
+  .dealsbody::-webkit-scrollbar{width:9px}.dealsbody::-webkit-scrollbar-thumb{background:#26313f;border-radius:8px}
+  .deal-card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;cursor:pointer;
+    transition:.15s;display:flex;flex-direction:column;gap:10px}
+  .deal-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .dc-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .dc-addr{font-size:15px;font-weight:700;color:#eef2f7;line-height:1.2}
+  .dc-sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .dc-disc{font-size:21px;font-weight:800;color:var(--buy);text-align:right;line-height:1;white-space:nowrap}
+  .dc-disc small{display:block;font-size:8.5px;color:var(--muted2);font-weight:600;letter-spacing:.4px;margin-top:2px}
+  .dc-prices{display:flex;gap:16px;flex-wrap:wrap}
+  .dc-list{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .dc-est{font-size:16px;font-weight:700;color:#9fb0c4;font-variant-numeric:tabular-nums;line-height:1}
+  .dc-rent{font-size:16px;font-weight:700;color:#6ee7b7;font-variant-numeric:tabular-nums;line-height:1}
+  .dc-lbl{font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px;font-weight:600;margin-top:4px}
+  .dc-facts{font-size:12px;color:#c6d2e0;border-top:1px solid var(--line2);padding-top:9px}
+  .dc-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .dc-link{color:var(--accent);font-size:12px;font-weight:600;text-decoration:none}
+  .dc-link:hover{text-decoration:underline}
+  .dc-map{color:var(--muted2);font-size:11.5px}
+  .deals-empty{grid-column:1/-1;color:var(--muted);font-size:13px;line-height:1.6;padding:34px 10px;text-align:center}
+  .deals-sec{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:700;margin-top:10px}
+  .deals-note{grid-column:1/-1;color:var(--muted2);font-size:11px;line-height:1.55;border-top:1px solid var(--line2);padding-top:12px;margin-top:6px}
+
   .leaflet-popup-content-wrapper{background:var(--glass-solid);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
   .leaflet-popup-content{margin:10px 13px;font-size:12.5px;line-height:1.45}
   .leaflet-popup-tip{background:var(--glass-solid)}
@@ -312,8 +345,7 @@
       <button data-v="in">$400–600k</button>
       <button data-v="sweet">★ Sweet</button>
     </div></div>
-  <button id="topBtn" class="topbtn">🏘 Best in-budget hoods</button>
-  <button id="dealsBtn" class="topbtn" onclick="showDeals()">🔥 On-market deals</button>
+  <button id="dealsBtn" class="topbtn" onclick="showDeals()">🔥 Best market deals</button>
   <button id="likesBtn" class="topbtn" onclick="showLikes()">♥ Liked</button>
   <span id="matchCount"></span>
   <div class="searchwrap"><input type="text" id="search" placeholder="Find a town…" aria-label="Find a town" autocomplete="off" /></div>
@@ -334,6 +366,7 @@
 
 <div id="detailStatus" class="glass"><span class="spin"></span><span id="detailMsg"></span></div>
 <div id="homeModal" onclick="if(event.target===this)closeHome()"></div>
+<div id="dealsModal" onclick="if(event.target===this)closeDeals()"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -401,7 +434,7 @@ function render(){if(!LAYER)return;LAYER.setStyle(view==="state"?styleFor:backdr
 /* ---------------- town drill-in ---------------- */
 async function drillIn(tp){
   view="town";SELTOWN=tp;SELHOOD=null;neighFollow=true;
-  document.getElementById("topBtn").classList.remove("active");
+  document.getElementById("topBtn")?.classList.remove("active");
   clearDetail(false);
   if(topLayer){map.removeLayer(topLayer);topLayer=null;}
   LAYER.setStyle(backdropStyle);
@@ -515,7 +548,7 @@ function drillOut(){
   if(topLayer){map.removeLayer(topLayer);topLayer=null;}
   HOODLAYERS={};MARKERS.clearLayers();
   LAYER.setStyle(styleFor);setLegend("score");
-  document.getElementById("topBtn").classList.remove("active");
+  document.getElementById("topBtn")?.classList.remove("active");
   renderStateRanking();
   map.flyTo([42.15,-71.7],8.3,{duration:.6});
 }
@@ -587,49 +620,65 @@ function showLikes(){
 function unlike(k){if(LIKES.homes&&LIKES.homes[k]){delete LIKES.homes[k];LIKES.keys=Object.keys(LIKES.homes);
   persistLikes();updateLikeBtn();refreshParcelStyle();showLikes();}}
 
-/* ---------------- on-market deals board (live listings ranked vs our estimate) ---------------- */
-function dealOpen(geoid,lat,lon){const tp=TOWN_PROPS[geoid];if(tp)drillIn(tp);
-  if(lat&&lon)setTimeout(()=>map.flyTo([lat,lon],17,{duration:.8}),750);}
-function dealRow(l){
-  const tn=townName(l.town_geoid), bits=[tn];
-  if(l.beds)bits.push(Math.round(l.beds)+" bd"); if(l.baths)bits.push(l.baths+" ba");
-  if(l.sqft)bits.push(Math.round(l.sqft).toLocaleString()+" sqft"); if(l.dom!=null)bits.push(l.dom+"d on mkt");
-  const under=(l.disc!=null&&l.disc>=3)?`<span style="color:var(--buy);font-weight:800;margin-left:6px">−${l.disc}%</span>`:
-    (l.disc!=null&&l.disc<=-5)?`<span style="color:#fca5a5;font-weight:700;margin-left:6px">+${-l.disc}% over</span>`:"";
-  return `<div class="hood" onclick="dealOpen('${l.town_geoid}',${l.lat||'null'},${l.lon||'null'})">
-    <div class="hd"><div class="hn">${esch(l.addr)}${under}${l.url?` <a href="${esch(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-size:11px">↗</a>`:""}</div>
-      <div class="hsub">${esch(bits.join(" · "))}</div></div>
-    <div class="ap"><div style="font-weight:800">${fmtPrice(l.price)}</div>${l.est?`<small style="color:var(--muted2)">est ${fmtPrice(l.est)}</small>`:""}</div></div>`;
-}
-function showDeals(){
-  const sb=document.getElementById("sidebar");sb.classList.remove("empty");
-  const all=Object.values(LISTINGS.by_addr||{});
-  const inb=l=>l.price&&l.price>=120000&&l.price<=620000&&!/land|lot/i.test(l.ptype||"");
-  const actives=all.filter(l=>l.status==="active"&&inb(l));
-  const deals=actives.filter(l=>l.est&&l.disc!=null).sort((a,b)=>b.disc-a.disc);
-  const otherActive=actives.filter(l=>!(l.est&&l.disc!=null)).sort((a,b)=>(a.dom||999)-(b.dom||999));
-  const coming=all.filter(l=>l.status==="coming_soon"&&inb(l)).sort((a,b)=>(b.disc||-99)-(a.disc||-99)).slice(0,10);
-  const pre=Object.values(PRELIST.by_key||{}).filter(p=>{const tp=TOWN_PROPS[p.town_geoid];return tp&&(tp.budget_fit==="in"||tp.budget_fit==="below");}).sort((a,b)=>b.score-a.score).slice(0,12);
-  const upd=LIST_META?(" · updated "+esch(String(LIST_META).slice(0,10))):"";
-  let h=`<div class="backlink" onclick="drillOut()">← All of Massachusetts</div>
-    <div class="sb-head" style="padding-top:8px"><h2>🔥 On-market deals</h2>
-      <div class="sub">In-budget homes for sale now, ranked by how far the list price sits <b>below our estimate</b>${upd}</div></div>`;
-  if(!actives.length){
-    h+=`<div class="section"><div class="note">No live listings loaded yet for the areas covered so far. The nightly update rotates through more towns each night — run <b>python3 update_listings.py</b> to pull more now, or check back tomorrow.</div></div>`;
-  }else{
-    h+=`<div class="section"><h3>Best value for sale now <span class="pill">${deals.filter(d=>d.disc>=3).length}</span></h3>
-      <div class="note" style="margin-bottom:8px">List price vs our estimated market value. <b style="color:var(--buy)">−%</b> = listed under our estimate (a lead to investigate — verify condition).</div>
-      <div class="hoodlist">${(deals.length?deals:otherActive).slice(0,30).map(dealRow).join("")}</div></div>`;
-    if(coming.length)h+=`<div class="section"><h3>◆ Coming soon <span class="pill">${coming.length}</span></h3><div class="hoodlist">${coming.map(dealRow).join("")}</div></div>`;
-  }
-  if(pre.length)h+=`<div class="section"><h3>◇ Likely to list soon <span class="pill">off-market</span></h3>
-    <div class="note" style="margin-bottom:8px">Not on the market — predicted from ownership tenure, absentee/out-of-state owners &amp; redevelopment signals. A watch-list, not a guarantee.</div>
-    <div class="hoodlist">${pre.map(p=>`<div class="hood" onclick="dealOpen('${p.town_geoid}',${p.pt?p.pt[1]:'null'},${p.pt?p.pt[0]:'null'})">
-      <div class="hd"><div class="hn">${esch(p.addr||"(home)")}</div><div class="hsub">${esch(townName(p.town_geoid))}${p.years_owned?" · owned "+p.years_owned+" yrs":""}${p.reasons&&p.reasons[0]?" · "+esch(p.reasons[0]):""}</div></div>
-      <div class="ap" style="color:#5b9dff;font-weight:800">${p.score}</div></div>`).join("")}</div></div>`;
-  h+=`<div class="section"><div class="note">Listings via Redfin's public feed, matched to assessor parcels; estimate from this map's valuation engine. Best-effort leads — "not listed" can mean "not found". Coverage grows as the nightly job rotates through towns.</div></div>`;
-  sb.querySelector(".content").innerHTML=h;sb.scrollTop=0;
-}
+/* ---------------- best-market-deals: a full overlay menu (town-filterable, rich cards) ---------------- */
+function dealOpen(geoid,lat,lon){closeDeals();const tp=TOWN_PROPS[geoid];if(tp)drillIn(tp);
+  if(lat&&lon)setTimeout(()=>map.flyTo([lat,lon],17,{duration:.8}),820);}
+function closeDeals(){const m=document.getElementById("dealsModal");if(m){m.classList.remove("on");m.innerHTML="";}}
+let dealTownFilter="all",dealSort="disc";
+function activeDeals(){return Object.values(LISTINGS.by_addr||{}).filter(l=>l.status==="active"&&l.price&&l.price>=120000&&l.price<=620000&&!/land|lot/i.test(l.ptype||""));}
+function dealEnrich(l){const tp=TOWN_PROPS[l.town_geoid]||{};
+  const rent=(tp.rent&&tp.price&&l.est)?Math.round(tp.rent*Math.pow(l.est/tp.price,0.85)/25)*25:null;
+  const yld=(rent&&l.price)?(rent*12/l.price*100):null;
+  const psf=(l.price&&l.sqft)?Math.round(l.price/l.sqft):null;
+  return {rent,yld,psf};}
+function dealCard(l){const e=dealEnrich(l);
+  const facts=[l.beds?Math.round(l.beds)+" bd":"",l.baths?l.baths+" ba":"",l.sqft?Math.round(l.sqft).toLocaleString()+" sqft":"",l.year?"built "+Math.round(l.year):"",e.psf?"$"+e.psf+"/sqft":"",l.dom!=null?l.dom+"d on mkt":""].filter(Boolean).join(" · ");
+  const cityX=(l.city&&l.city.toLowerCase()!==townName(l.town_geoid).toLowerCase())?" · "+esch(l.city):"";
+  return `<div class="deal-card" onclick="dealOpen('${l.town_geoid}',${l.lat||"null"},${l.lon||"null"})">
+    <div class="dc-top"><div style="min-width:0"><div class="dc-addr">${esch(l.addr)}</div><div class="dc-sub">${esch(townName(l.town_geoid))}${cityX}${l.status==="coming_soon"?' · <span style="color:#fbbf24">coming soon</span>':""}</div></div>
+      ${(l.disc!=null&&l.disc>=3)?`<div class="dc-disc">−${l.disc}%<small>vs est</small></div>`:""}</div>
+    <div class="dc-prices"><div><div class="dc-list">${fmtPrice(l.price)}</div><div class="dc-lbl">list price</div></div>
+      ${l.est?`<div><div class="dc-est">${fmtPrice(l.est)}</div><div class="dc-lbl">our est${l.conf?" · "+l.conf:""}</div></div>`:""}
+      ${e.rent?`<div><div class="dc-rent">$${e.rent.toLocaleString()}/mo</div><div class="dc-lbl">est rent${e.yld?" · "+e.yld.toFixed(1)+"% yld":""}</div></div>`:""}</div>
+    ${facts?`<div class="dc-facts">${facts}</div>`:""}
+    <div class="dc-actions">${l.url?`<a href="${esch(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="dc-link">View listing ↗</a>`:"<span></span>"}<span class="dc-map">Show on map →</span></div></div>`;}
+function preCard(p){return `<div class="deal-card" onclick="dealOpen('${p.town_geoid}',${p.pt?p.pt[1]:"null"},${p.pt?p.pt[0]:"null"})">
+    <div class="dc-top"><div style="min-width:0"><div class="dc-addr">${esch(p.addr||"(home)")}</div><div class="dc-sub">${esch(townName(p.town_geoid))}${p.years_owned?" · owned "+p.years_owned+" yrs":""}</div></div>
+      <div class="dc-disc" style="color:#5b9dff">${p.score}<small>likely</small></div></div>
+    ${p.reasons&&p.reasons.length?`<div class="dc-facts" style="border-top:0;padding-top:0">${esch(p.reasons[0])}</div>`:""}
+    <div class="dc-actions"><span class="dc-link" style="color:var(--muted2)">off-market · predicted</span><span class="dc-map">Show on map →</span></div></div>`;}
+function populateDealTowns(){const sel=document.getElementById("dealTown");if(!sel)return;
+  const flagged=activeDeals().filter(l=>l.disc!=null&&l.disc>=3);const cnt={};flagged.forEach(l=>cnt[l.town_geoid]=(cnt[l.town_geoid]||0)+1);
+  const towns=Object.keys(cnt).sort((a,b)=>townName(a).localeCompare(townName(b)));
+  sel.innerHTML=`<option value="all">📍 All towns · ${flagged.length} deals</option>`+towns.map(g=>`<option value="${g}">${esch(townName(g))} · ${cnt[g]}</option>`).join("");
+  sel.value=dealTownFilter;}
+function dealSetTown(v){dealTownFilter=v;renderDealsBody();}
+function dealSetSort(v){dealSort=v;renderDealsBody();}
+function renderDealsBody(){const body=document.getElementById("dealsBody");if(!body)return;
+  let deals=activeDeals();if(dealTownFilter!=="all")deals=deals.filter(l=>l.town_geoid===dealTownFilter);
+  const S={disc:(a,b)=>b.disc-a.disc,price:(a,b)=>a.price-b.price,dom:(a,b)=>(a.dom??999)-(b.dom??999),yield:(a,b)=>(dealEnrich(b).yld||0)-(dealEnrich(a).yld||0)};
+  const sorter=S[dealSort]||S.disc;
+  const flagged=deals.filter(l=>l.est&&l.disc!=null&&l.disc>=3).sort(sorter);
+  let h="";
+  if(flagged.length)h+=flagged.slice(0,80).map(dealCard).join("");
+  else{const others=[...deals].sort(dealSort==="disc"?S.dom:sorter).slice(0,40);
+    h+=others.length?(`<div class="deals-sec">In-budget listings${dealTownFilter==="all"?"":" in "+esch(townName(dealTownFilter))} — no clear below-estimate deals here yet</div>`+others.map(dealCard).join("")):
+      `<div class="deals-empty">No in-budget listings loaded for ${dealTownFilter==="all"?"the covered areas":esch(townName(dealTownFilter))} yet — the nightly job rotates through more towns each night.</div>`;}
+  let pre=Object.values(PRELIST.by_key||{}).filter(p=>{const tp=TOWN_PROPS[p.town_geoid];return tp&&(tp.budget_fit==="in"||tp.budget_fit==="below");});
+  if(dealTownFilter!=="all")pre=pre.filter(p=>p.town_geoid===dealTownFilter);
+  pre.sort((a,b)=>b.score-a.score);pre=pre.slice(0,dealTownFilter==="all"?6:10);
+  if(pre.length)h+=`<div class="deals-sec">◇ Likely to list soon · off-market${dealTownFilter==="all"?"":" in "+esch(townName(dealTownFilter))}</div>`+pre.map(preCard).join("");
+  h+=`<div class="deals-note">List price vs our estimated market value (MassGIS assessor data + this map's valuation engine; a deal is flagged only when our estimate is confident). <b style="color:var(--buy)">−%</b> = listed under our estimate — a lead to investigate, verify condition. Listings via Redfin's public feed; "Show on map" zooms to the home so you can open its full detail.</div>`;
+  body.innerHTML=h;}
+function showDeals(){dealTownFilter="all";dealSort="disc";
+  const m=document.getElementById("dealsModal");m.classList.add("on");
+  m.innerHTML=`<div class="hm"><div class="hm-top">
+      <div style="min-width:0;margin-right:auto"><h2>🔥 Best market deals</h2><div class="sub">In-budget homes for sale, ranked by how far below our estimate${LIST_META?" · updated "+esch(String(LIST_META).slice(0,10)):""}</div></div>
+      <select id="dealTown" class="deal-sel" onchange="dealSetTown(this.value)" title="Filter by town"></select>
+      <select id="dealSort" class="deal-sel" onchange="dealSetSort(this.value)" title="Sort"><option value="disc">Best discount</option><option value="price">Lowest price</option><option value="dom">Newest listed</option><option value="yield">Best rent yield</option></select>
+      <button class="hm-x" onclick="closeDeals()" aria-label="Close">✕</button></div>
+    <div class="dealsbody" id="dealsBody"></div></div>`;
+  populateDealTowns();renderDealsBody();}
 
 /* ---------------- statewide town leaderboard (shown in state view) ---------------- */
 function hiTown(gid,on){const l=townLayerByGeoid[gid];if(l&&view==="state")l.setStyle(on?{weight:2,color:"#fff",fillOpacity:.95}:styleFor(l.feature));}
@@ -1302,7 +1351,7 @@ function homeLikeToggle(btn){if(!CURRENT_HOME)return;toggleLike(CURRENT_HOME);co
   btn.classList.toggle("on",on);btn.innerHTML=on?"★ Liked":"☆ Like";refreshParcelStyle();updateLikeBtn();}
 function closeHome(){const m=document.getElementById("homeModal");if(m){m.classList.remove("on");m.innerHTML="";}CURRENT_HOME=null;}
 function refreshParcelStyle(){if(parcelLayer)applyParcelStyle();}
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closeHome();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeHome();closeDeals();}});
 
 async function loadDetail(){
   if(view==="state"||map.getZoom()<DETAIL_ZOOM){if(parcelLayer||streetLayer)clearDetail();return;}
@@ -1378,7 +1427,6 @@ function initControls(){
     document.querySelectorAll("#budgetSeg button").forEach(x=>x.classList.remove("active"));b.classList.add("active");budget=b.dataset.v;render();fitToFiltered();
     const c=countMatches();document.getElementById("matchCount").textContent=budget==="all"?"":`${c} towns match`;
     renderStateRanking();};});
-  document.getElementById("topBtn").onclick=()=>{if(view==="tophoods")drillOut();else showTopHoods();};
   document.getElementById("weightsBox").innerHTML=Object.keys(META.weights).sort((a,b)=>META.weights[b]-META.weights[a])
     .map(k=>`<div class="weightrow"><span><i class="qdot ${QCLASS[META.quality[k]]}"></i>${META.labels[k]}</span><b>${META.weights[k]}</b></div>`).join("")
     +`<div class="note" style="margin-top:8px">Appreciation-tilt weighting · budget $${META.budget_lo/1000}k–$${META.budget_hi/1000}k.</div>`;
