@@ -23,7 +23,7 @@
   .glass{background:var(--glass);backdrop-filter:blur(20px) saturate(130%);-webkit-backdrop-filter:blur(20px) saturate(130%);
     border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
 
-  #toolbar{position:absolute;z-index:1000;top:14px;left:14px;right:402px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:9px 12px 9px 14px}
+  #toolbar{position:absolute;z-index:1000;top:14px;left:14px;right:466px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:11px 14px 11px 16px;font-size:1.06em}
   #brand{display:flex;align-items:center;gap:10px;padding-right:14px;border-right:1px solid var(--line);white-space:nowrap}
   #brand .logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:linear-gradient(135deg,#34d399,#5b9dff)}
   #brand .t{font-weight:700;font-size:13.5px;line-height:1.15}
@@ -41,7 +41,7 @@
   #search:focus{border-color:var(--accent);width:200px}
   .searchwrap::before{content:"⌕";position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px}
   #matchCount{font-size:11.5px;font-weight:600;color:var(--buy);white-space:nowrap}
-  #detailStatus{position:absolute;z-index:1100;top:74px;left:calc((100% - 388px)/2);transform:translateX(-50%);
+  #detailStatus{position:absolute;z-index:1100;top:74px;left:calc((100% - 452px)/2);transform:translateX(-50%);
     padding:8px 15px;display:none;align-items:center;gap:9px;font-size:12px;font-weight:600;color:var(--text)}
   #detailStatus.on{display:flex}
   #detailStatus .spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.22);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
@@ -56,7 +56,7 @@
   .ntog button{background:transparent;color:var(--muted);border:0;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;border-radius:6px;font-family:inherit;transition:.15s}
   .ntog button:hover{color:var(--text)}
 
-  #legend{position:absolute;z-index:1000;left:14px;bottom:16px;padding:13px 15px;width:236px}
+  #legend{position:absolute;z-index:1000;left:14px;bottom:16px;padding:13px 15px;width:236px;zoom:1.12}
   #legend .lt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
   #legend .bar{height:10px;border-radius:6px;margin:8px 0 5px;background:linear-gradient(90deg,#c2384a,#e0654f,#efab4a,#f2c94c,#9bd069,#46b079,#2a9d6f)}
   #legend .ends{display:flex;justify-content:space-between;color:var(--muted2);font-size:10.5px;font-weight:500}
@@ -69,7 +69,11 @@
   #legend summary::before{content:"▸ ";color:var(--muted2)}
   #legend details[open] summary::before{content:"▾ "}
 
-  #sidebar{width:388px;height:100%;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;flex-shrink:0;scrollbar-width:thin;scrollbar-color:#2a3543 transparent}
+  #sidebar{width:452px;height:100%;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;flex-shrink:0;scrollbar-width:thin;scrollbar-color:#2a3543 transparent}
+  /* readability scale — enlarge the info surfaces uniformly (tune these two numbers to taste) */
+  #sidebar .content{zoom:1.15}
+  #sidebar .empty-hint{zoom:1.12}
+  #homeModal .hm-body{zoom:1.1}
   #sidebar::-webkit-scrollbar{width:8px}#sidebar::-webkit-scrollbar-thumb{background:#26313f;border-radius:8px}
   #sidebar.empty .content{display:none}
   .empty-hint{display:none;padding:48px 26px;color:var(--muted);font-size:13px;line-height:1.7}
@@ -268,7 +272,7 @@
   .leaflet-popup-content{margin:10px 13px;font-size:12.5px;line-height:1.45}
   .leaflet-popup-tip{background:var(--glass-solid)}
   .leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
-  .leaflet-tooltip.tip{background:var(--glass-solid);border:1px solid var(--line);color:var(--text);box-shadow:var(--shadow);border-radius:8px;font-size:12px;font-weight:600;padding:5px 9px}
+  .leaflet-tooltip.tip{background:var(--glass-solid);border:1px solid var(--line);color:var(--text);box-shadow:var(--shadow);border-radius:8px;font-size:13.5px;font-weight:600;padding:6px 11px}
   .leaflet-tooltip.tip::before{display:none}
   .leaflet-tooltip.tip .tv{color:var(--muted);font-weight:700;margin-left:6px}
   .leaflet-control-zoom{border:none!important;box-shadow:var(--shadow)!important}
