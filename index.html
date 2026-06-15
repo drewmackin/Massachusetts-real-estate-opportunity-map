@@ -399,7 +399,7 @@ function render(){if(!LAYER)return;LAYER.setStyle(view==="state"?styleFor:backdr
 
 /* ---------------- town drill-in ---------------- */
 async function drillIn(tp){
-  view="town";SELTOWN=tp;SELHOOD=null;
+  view="town";SELTOWN=tp;SELHOOD=null;neighFollow=true;
   document.getElementById("topBtn").classList.remove("active");
   clearDetail(false);
   if(topLayer){map.removeLayer(topLayer);topLayer=null;}
@@ -435,30 +435,60 @@ function subVal(p,k){const s=p.sub||{};
   if(k==="rent")return s.rent!=null?s.rent:p.rent_demand;
   if(k==="opp")return s.opp!=null?s.opp:p.score;
   return s[k];}
+function modeLabel(k){return k==="composite"?"Overall opportunity":catLabel(k);}
+// map a state-level "Color by" factor to a NEIGHBORHOOD value so the selection carries into the drill-in
+function neighMetric(p,k){const s=p.sub||{},tp=TOWN_PROPS[p.town_geoid]||{};
+  switch(k){
+    case "composite": return s.opp!=null?s.opp:(p.score??50);
+    case "future": return p.future??50;
+    case "rentability": return s.rent!=null?s.rent:(p.rent_demand??50);
+    case "rent_future": return tp.rent_future??50;
+    case "safety": return s.safety??50;
+    case "budget": return budgetScore(tp);
+    case "appreciation": return s.appr!=null?s.appr:(p.appr_pctl??50);
+    case "walkability": return s.walk??50;
+    case "transit": return s.transit??50;
+    case "green_culture": return Math.round(((s.parks??50)+(s.culture??50))/2);
+    case "schools": return s.schools!=null?s.schools:((tp.scores&&tp.scores.schools)??60);
+    default: return (tp.scores&&tp.scores[k])!=null?tp.scores[k]:50;   // town-level criteria (flat across hoods)
+  }}
+function neighValueFor(p){let sum=0;for(const k of colorModes)sum+=neighMetric(p,k);return sum/colorModes.length;}
+let neighFollow=true;   // neighborhoods follow the active state Color-by until the user taps a lens factor
 function hoodColor(p){
+  if(neighFollow)return ramp(neighValueFor(p));
   if(neighColorMode==="appr")return apprColor(p.appr5);
   if(neighColorMode==="score")return ramp(p.score);
   const v=subVal(p,neighColorMode);return v==null?"#3a4453":ramp(v);}
 function hoodCenter(name){const l=HOODLAYERS[name];return l?l.getBounds().getCenter():null;}
 const COMPASS=["east","northeast","north","northwest","west","southwest","south","southeast"];
+function updateLensChips(){
+  const fc=document.getElementById("lensFollowChip");if(fc)fc.classList.toggle("on",neighFollow);
+  document.querySelectorAll(".lenschip[data-m]").forEach(b=>b.classList.toggle("on",!neighFollow&&b.dataset.m===neighColorMode));}
+function followColorBy(){neighFollow=true;if(neighLayer)neighLayer.setStyle(hoodStyle);if(topLayer)topLayer.setStyle(topHoodStyle);
+  if(SELHOOD&&HOODLAYERS[SELHOOD.name])HOODLAYERS[SELHOOD.name].setStyle({color:"#fff",weight:2.6,fillOpacity:.92});
+  updateNeighLegend();const ss=document.getElementById("sideSummary");if(ss&&SELTOWN)ss.innerHTML=sideSummary(SELTOWN.geoid,neighColorMode);updateLensChips();}
 function sideSummary(geoid,k){
-  const info=LENSINFO[k]||{label:k,town:0};
-  const hoods=(NEIGH_BY_TOWN[geoid]||[]).map(f=>f.properties).filter(p=>subVal(p,k)!=null);
-  if(hoods.length<2)return `<b>${esch(info.label)}</b> — only one mapped area in this town.`;
-  if(info.town===1){const v=Math.round(subVal(hoods[0],k));
-    return `<b>${esch(info.label)}</b> is a <b>town-level</b> measure (${v}/100) — it doesn't vary by neighborhood here.`;}
-  const estNote=info.town===3?` <span class="muted">Estimated from the area's relative desirability — see the town's 🔎 researched crime notes for real, cited figures.</span>`:``;
-  const sorted=[...hoods].sort((a,b)=>subVal(b,k)-subVal(a,k));
-  const best=sorted[0],worst=sorted[sorted.length-1];
+  const tn=(TOWN_PROPS[geoid]||{}).name||"this town";
+  const hoods=(NEIGH_BY_TOWN[geoid]||[]).map(f=>f.properties);
+  if(hoods.length<2)return `Only one mapped area in ${esch(tn)}.`;
+  let vf,label,est=false;
+  if(neighFollow){vf=neighValueFor;
+    label=colorModes.length>1?("your blend — "+colorModes.map(modeLabel).join(" + ")):modeLabel(colorModes[0]);
+    est=colorModes.includes("safety");
+  }else{const info=LENSINFO[k]||{label:k,town:0};label=info.label;est=info.town===3;vf=(p)=>subVal(p,k);}
+  const vals=hoods.map(p=>({p,v:vf(p)})).filter(x=>x.v!=null);
+  if(vals.length<2)return `Colored by <b>${esch(label)}</b>.`;
+  vals.sort((a,b)=>b.v-a.v);
+  const best=vals[0],worst=vals[vals.length-1],spread=Math.round(best.v-worst.v);
+  if(spread<6)return `Colored by <b>${esch(label)}</b> — essentially town-level here, so it barely varies between ${esch(tn)}'s neighborhoods.`;
   const tl=townLayerByGeoid[geoid],tc=tl?tl.getBounds().getCenter():null;
-  const top=sorted.slice(0,Math.max(1,Math.round(sorted.length/3)));
-  let la=0,lo=0,n=0;top.forEach(p=>{const c=hoodCenter(p.name);if(c){la+=c.lat;lo+=c.lng;n++;}});
+  const top=vals.slice(0,Math.max(1,Math.round(vals.length/3)));
+  let la=0,lo=0,n=0;top.forEach(x=>{const c=hoodCenter(x.p.name);if(c){la+=c.lat;lo+=c.lng;n++;}});
   let lean="";
   if(tc&&n){const dy=la/n-tc.lat,dx=lo/n-tc.lng;if(Math.hypot(dx,dy)>0.008){const ang=(Math.atan2(dy,dx)*180/Math.PI+360)%360;lean=COMPASS[Math.round(((ang+22.5)%360)/45)%8];}}
-  const spread=Math.round(subVal(best,k)-subVal(worst,k));
-  return `For <b>${esch(info.label)}</b>, ${lean?`the <b>${lean}ern</b> side of ${esch(TOWN_PROPS[geoid].name)} leads`:`<b>${esch(best.name)}</b> leads`}. `
-    +`Strongest: <b>${esch(best.name)}</b> (${Math.round(subVal(best,k))}/100) · weakest: <b>${esch(worst.name)}</b> (${Math.round(subVal(worst,k))}/100).`
-    +(spread<12?` Fairly even across town.`:``)+estNote;}
+  return `Colored by <b>${esch(label)}</b>. ${lean?`The <b>${lean}ern</b> side of ${esch(tn)} leads`:`<b>${esch(best.p.name)}</b> leads`}. `
+    +`Strongest: <b>${esch(best.p.name)}</b> (${Math.round(best.v)}/100) · weakest: <b>${esch(worst.p.name)}</b> (${Math.round(worst.v)}/100).`
+    +(est?` <span class="muted">Safety is an estimate — see the 🔎 researched crime notes.</span>`:``);}
 function hoodStyle(f){const p=f.properties,sel=isSel(p);
   return{fillColor:hoodColor(p),fillOpacity:sel?.9:.8,color:sel?"#ffffff":(p.is_best?"#fbbf24":"rgba(8,11,17,.55)"),weight:sel?2.6:(p.is_best?2.2:.8)};}
 function topHoodStyle(f){return{fillColor:hoodColor(f.properties),fillOpacity:.85,color:"#fbbf24",weight:1.3};}
@@ -466,14 +496,15 @@ function updateNeighLegend(){
   const t=document.getElementById("legendTitle"),e=document.getElementById("legendEnds"),q=document.getElementById("qkey");
   document.querySelector("#legend .bar").style.background="";
   q.style.display="none";
+  if(neighFollow){t.textContent=(colorModes.length>1?"Your Color-by blend":modeLabel(colorModes[0]).replace("Opportunity score","Overall opportunity"))+" · by area";e.innerHTML="<span>Lower</span><span>Higher</span>";return;}
   if(neighColorMode==="appr"){t.textContent="5-yr home-price appreciation";e.innerHTML="<span>≤30%</span><span>≥70%</span>";}
   else{const info=LENSINFO[neighColorMode];t.textContent=(info?info.label.replace(/^\S+\s/,""):"Opportunity")+" · by area";e.innerHTML="<span>Lower</span><span>Higher</span>";}
 }
-function setNeighColor(m){neighColorMode=m;if(neighLayer)neighLayer.setStyle(hoodStyle);if(topLayer)topLayer.setStyle(topHoodStyle);
+function setNeighColor(m){neighFollow=false;neighColorMode=m;if(neighLayer)neighLayer.setStyle(hoodStyle);if(topLayer)topLayer.setStyle(topHoodStyle);
   if(SELHOOD&&HOODLAYERS[SELHOOD.name])HOODLAYERS[SELHOOD.name].setStyle({color:"#fff",weight:2.6,fillOpacity:.92});
   updateNeighLegend();
   const ss=document.getElementById("sideSummary");if(ss&&SELTOWN)ss.innerHTML=sideSummary(SELTOWN.geoid,m);
-  document.querySelectorAll(".lenschip").forEach(b=>b.classList.toggle("on",b.dataset.m===m));
+  updateLensChips();
   document.querySelectorAll(".ntog button").forEach(b=>b.classList.toggle("active",b.dataset.m===m));}
 
 function drillOut(){
@@ -656,8 +687,8 @@ function renderTownPanel(p,hoods){
     const best=ranked[0].properties;
     // "which side of town is better" lens
     h+=`<div class="section"><h3>🧭 Which side of ${esch(p.name)} is better?</h3>
-      <div class="note" style="margin:2px 0 10px">Tap a factor — the map recolors this town's neighborhoods and the read-out names the best &amp; weakest areas. <span style="color:var(--muted2)">🎓 schools is town-level; 🛡 safety is an estimate (•) — real crime notes are in "What this town is really like".</span></div>
-      <div class="lenswrap">${LENSES.map(([k,lab,tw])=>`<button class="lenschip ${neighColorMode===k?'on':''}" data-m="${k}" onclick="setNeighColor('${k}')">${lab}${tw?'<sup>•</sup>':''}</button>`).join("")}</div>
+      <div class="note" style="margin:2px 0 10px">These neighborhoods are colored by your <b>Color by</b> selection (safety, blends, anything) — change it up top and the areas recolor. Tap a factor below to recolor by just that. <span style="color:var(--muted2)">🎓 schools town-level; 🛡 safety an estimate (•).</span></div>
+      <div class="lenswrap"><button id="lensFollowChip" class="lenschip ${neighFollow?'on':''}" onclick="followColorBy()">🎨 Your Color-by</button>${LENSES.map(([k,lab,tw])=>`<button class="lenschip ${(!neighFollow&&neighColorMode===k)?'on':''}" data-m="${k}" onclick="setNeighColor('${k}')">${lab}${tw?'<sup>•</sup>':''}</button>`).join("")}</div>
       <div id="sideSummary" class="sidesum">${sideSummary(p.geoid,neighColorMode)}</div></div>`;
     h+=`<div class="section"><h3>Best neighborhood${ranked.length>2?"s":""}</h3>
       <div class="bestcard" onclick="selectHood(HOOD('${esc(best.name)}'))">
@@ -723,14 +754,33 @@ function renderHoodDetail(b){
 
   h+=`<div class="section" style="padding-bottom:8px"><div class="zoomhint" onclick="zoomToParcels()">🔍 Zoom in: every home's est. market value, ideal buy price &amp; ⭐ deal score</div></div>`;
 
-  // per-neighborhood rent snapshot (rent varies block to block)
-  const trent=(TOWN_PROPS[b.town_geoid]||{}).rent, dem=outlookOf(b.rent_demand||50);
-  h+=`<div class="section"><h3>💰 Rent here <span class="pill">est.</span></h3>
-    <div class="yhero"><div class="big" style="color:${ramp(b.rent_demand||50)}">~$${(b.rent_est||0).toLocaleString()}</div>
-      <div class="lbl">est. monthly rent<br><b>${(b.rent_vs_town>=0?"+":"")+(b.rent_vs_town||0)}%</b> vs ${esch(b.town_name)} avg${trent?` (~$${trent.toLocaleString()}/mo)`:""}</div></div>
-    <div style="margin-top:12px">${scoreBar("Rental demand here",b.rent_demand||50)}</div>
-    <div class="outlook"><span class="otag" style="color:${dem.c};background:${dem.bg}">${dem.l}</span><span>${esch(b.renter_profile||"Mixed renters")}</span></div>
-    <div class="note">Estimated from ${esch(b.town_name)}'s Zillow rent scaled by this area's transit access, walkability, university pull &amp; appreciation — rents vary block to block, so treat it as a relative signal, not a quote.</div></div>`;
+  // per-neighborhood rent snapshot (rent varies block to block) — landlord view
+  const tp=TOWN_PROPS[b.town_geoid]||{}, trent=tp.rent, re=b.rent_est||0;
+  const sz=m=>(Math.round(re*m/25)*25).toLocaleString();
+  const yld=(re&&tp.price)?(re*12/tp.price*100):null;
+  const ro=outlookOf(b.rent_demand||50), fo=outlookOf(tp.rent_future||50);
+  const dr=[];
+  if(b.uni_mi!=null&&b.uni_mi<=2&&b.uni_nm)dr.push(`🎓 ${b.uni_nm} · ${b.uni_mi} mi`);
+  if(b.station_mi!=null&&b.station_nm){if(b.station_mi<=1)dr.push(`🚆 Walk to ${b.station_nm}`);else if(b.station_mi<=2.5)dr.push(`🚆 ${b.station_mi} mi to ${b.station_nm}`);}
+  if(b.density&&b.density>=4000)dr.push(`🚶 Walkable · ~${b.density.toLocaleString()}/sq mi`);
+  if(b.appr5!=null&&b.appr5>=45)dr.push(`📈 Appreciating ${fmtPct(b.appr5)}/5yr`);
+  if((b.rent_demand||0)>=72)dr.push("👥 High tenant demand");
+  h+=`<div class="section"><h3>💰 Rent here <span class="pill">landlord est.</span></h3>
+    <div class="yhero"><div class="big" style="color:${ramp(b.rent_demand||50)}">~$${re.toLocaleString()}</div>
+      <div class="lbl">est. monthly rent · typical home<br><b>${(b.rent_vs_town>=0?"+":"")+(b.rent_vs_town||0)}%</b> vs ${esch(b.town_name)} avg${trent?` (~$${trent.toLocaleString()})`:""}</div></div>
+    <div class="minigrid" style="margin-top:14px">
+      <div class="m"><div class="mv">$${sz(0.78)}</div><div class="ml">1-bed</div></div>
+      <div class="m"><div class="mv">$${sz(0.98)}</div><div class="ml">2-bed</div></div>
+      <div class="m"><div class="mv">$${sz(1.22)}</div><div class="ml">3-bed</div></div>
+    </div>
+    ${yld!=null?`<div class="kv" style="margin-top:13px"><span>Gross yield · rent ÷ ${esch(b.town_name)} typical price</span><b style="color:${ramp((yld-3)/5*100)}">${yld.toFixed(1)}%</b></div>`:""}
+    <div style="margin-top:6px">${scoreBar("Rental demand here",b.rent_demand||50)}</div>
+    <div class="outlook"><span class="otag" style="color:${ro.c};background:${ro.bg}">${ro.l} demand</span>
+      <span class="otag" style="color:${fo.c};background:${fo.bg}">${fo.l} 5-yr outlook</span>
+      ${tp.rent_growth3!=null?`<span>rents ${tp.rent_growth3_est?"~":""}${fmtPct(tp.rent_growth3)} / 3 yrs</span>`:""}</div>
+    ${dr.length?`<div style="margin-top:12px"><div class="note" style="margin:0 0 6px;font-weight:700;color:var(--muted)">Why renters want this area</div><div class="chips">${dr.map(chip).join("")}</div></div>`:""}
+    <div class="outlook" style="margin-top:11px"><span>👤 ${esch(b.renter_profile||"Mixed renters")}</span></div>
+    <div class="note" style="margin-top:9px">Est. from ${esch(b.town_name)}'s Zillow rent scaled by this area's transit, walkability, university pull &amp; appreciation, then split by bedroom — a relative landlord signal, not a quote. Bed-size &amp; yield are estimates.</div></div>`;
 
   h+=`<div class="section" id="valsec"><h3>🏷 Home values &amp; deals here <span class="pill">est.</span></h3><div id="valbody" class="note">Estimating from assessor parcels…</div></div>`;
 
@@ -1262,7 +1312,13 @@ function toggleColor(k){
 function afterColorChange(){
   document.getElementById("colorBtnLabel").textContent=colorLabel().replace("Opportunity score","Overall opportunity");
   buildColorMenu();
-  if(view==="state"){render();renderStateRanking();}else if(LAYER)LAYER.setStyle(backdropStyle);
+  if(view==="state"){render();renderStateRanking();}
+  else{if(LAYER)LAYER.setStyle(backdropStyle);
+    if(neighFollow){   // carry the new Color-by selection into the drilled-in neighborhoods
+      if(neighLayer)neighLayer.setStyle(hoodStyle);if(topLayer)topLayer.setStyle(topHoodStyle);
+      if(SELHOOD&&HOODLAYERS[SELHOOD.name])HOODLAYERS[SELHOOD.name].setStyle({color:"#fff",weight:2.6,fillOpacity:.92});
+      updateNeighLegend();const ss=document.getElementById("sideSummary");if(ss&&SELTOWN)ss.innerHTML=sideSummary(SELTOWN.geoid,neighColorMode);updateLensChips();}
+  }
 }
 function initControls(){
   buildColorMenu();
