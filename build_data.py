@@ -589,6 +589,31 @@ def main():
             "pois": [],
         })
 
+    # validate transit: only count stations actually near the town. Fixes cross-state name
+    # collisions (e.g. MA "Warwick" inheriting Rhode Island Warwick's TF Green Airport station).
+    def _mi(la1, lo1, la2, lo2):
+        R = 3958.8; p1, p2 = math.radians(la1), math.radians(la2)
+        dp = math.radians(la2 - la1); dl = math.radians(lo2 - lo1)
+        a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+        return 2 * R * math.asin(math.sqrt(a))
+    for t in towns:
+        tr = t.get("transit")
+        if not tr or not tr.get("stations"):
+            continue
+        near = [s for s in tr["stations"] if _mi(t["clat"], t["clon"], s["lat"], s["lon"]) <= 12]
+        if len(near) == len(tr["stations"]):
+            continue
+        if not near:
+            t["transit"] = None
+        else:
+            modes = set()
+            for s in near:
+                modes.update(s.get("modes", []))
+            low = " ".join(modes).lower()
+            t["transit"] = {"has_subway": "subway" in low, "has_lightrail": "light" in low,
+                            "has_commuter_rail": "commuter" in low, "station_count": len(near),
+                            "modes": sorted(modes), "stations": near}
+
     # ---- assign POIs to towns (bbox prefilter + point-in-polygon) ----
     for poi in pois:
         x, y = poi["lon"], poi["lat"]

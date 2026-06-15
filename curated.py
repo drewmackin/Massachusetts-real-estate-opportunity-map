@@ -197,24 +197,24 @@ SCHOOL_TIER = {
 # It's a general classification (labeled "curated") — the official site / Wikipedia
 # link in the panel is authoritative for charter specifics.
 # ---------------------------------------------------------------------------
-CITIES = {
-    "Agawam", "Amesbury", "Attleboro", "Barnstable", "Beverly", "Boston", "Braintree",
+CITIES = {  # legally chartered CITIES (Watertown is legally a city despite the "Town of" nickname)
+    "Amesbury", "Attleboro", "Barnstable", "Beverly", "Boston", "Braintree",
     "Brockton", "Cambridge", "Chelsea", "Chicopee", "Easthampton", "Everett",
     "Fall River", "Fitchburg", "Framingham", "Franklin", "Gardner", "Gloucester",
     "Greenfield", "Haverhill", "Holyoke", "Lawrence", "Leominster", "Lowell", "Lynn",
     "Malden", "Marlborough", "Medford", "Melrose", "Methuen", "New Bedford",
     "Newburyport", "Newton", "North Adams", "Northampton", "Palmer", "Peabody",
-    "Pittsfield", "Quincy", "Randolph", "Revere", "Salem", "Somerville", "Southbridge",
+    "Pittsfield", "Quincy", "Revere", "Salem", "Somerville", "Southbridge",
     "Springfield", "Taunton", "Waltham", "Watertown", "West Springfield", "Westfield",
-    "Weymouth", "Winthrop", "Woburn", "Worcester",
-    # city-form municipalities that legally keep the "Town of" name (SecState list)
-    "Bridgewater", "Amherst", "East Longmeadow",
+    "Weymouth", "Woburn", "Worcester",
 }
 COUNCIL_MANAGER = {  # professional manager/administrator instead of a strong mayor
     "Cambridge", "Worcester", "Lowell", "Chelsea", "Barnstable", "Watertown",
     "Southbridge", "Randolph", "Palmer", "Franklin", "Bridgewater", "Amherst",
     "Winthrop", "East Longmeadow", "North Attleborough",
 }
+# legally TOWNS that run a strong-mayor + council (city-style government, "Town of ..." name)
+MAYOR_TOWNS = {"Agawam"}
 # Representative (elected precinct members) town meeting — high-confidence only.
 # Towns NOT listed default to OPEN town meeting, which is correct for the large
 # majority (e.g. Andover, Marblehead, Tewksbury, Mansfield, Stoneham are open).
@@ -232,8 +232,10 @@ def gov_form(name):
         return "City · Council–Manager", "city"
     if name in CITIES:
         return "City · Mayor & City Council", "city"
-    if name in COUNCIL_MANAGER:           # town with a town council + manager
+    if name in COUNCIL_MANAGER:           # legally a town, run by a town council + manager
         return "Town · Town Council–Manager", "town"
+    if name in MAYOR_TOWNS:               # legally a town, runs a city-style mayor + council
+        return "Town · Mayor–Council", "town"
     if name in REP_TOWN_MEETING:
         return "Town · Representative Town Meeting", "town"
     return "Town · Open Town Meeting & Select Board", "town"

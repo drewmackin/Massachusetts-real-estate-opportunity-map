@@ -135,7 +135,16 @@ def main():
         for st in o.get("stations", []):
             stations.append((st["lat"], st["lon"], st["name"]))
 
-    place_pts = [(pl["lat"], pl["lon"], pl["name"], KIND_W[pl["kind"]])
+    # which town actually contains each named place (so we don't borrow a neighboring town's
+    # village name, e.g. Montague's "Turners Falls" leaking into Greenfield). None = in no town
+    # polygon (boundary/just-outside) -> still allowed, to avoid losing legit border villages.
+    def town_of(lat, lon):
+        for tw in towns:
+            bx0, by0, bx1, by1 = tw["bbox"]
+            if bx0 <= lon <= bx1 and by0 <= lat <= by1 and pip(tw["geom"], lon, lat):
+                return tw["geoid"]
+        return None
+    place_pts = [(pl["lat"], pl["lon"], pl["name"], KIND_W[pl["kind"]], town_of(pl["lat"], pl["lon"]))
                  for pl in places if pl["kind"] in KIND_W and "Historic District" not in pl["name"]]
 
     # ---- tract records ----
@@ -171,8 +180,10 @@ def main():
     # name each tract
     def name_tract(t):
         best, bw = None, -1e9
-        for (pla, plo, pnm, w) in place_pts:
+        tg = t["town"]["geoid"]
+        for (pla, plo, pnm, w, owner) in place_pts:
             if abs(pla - t["clat"]) > 0.03: continue
+            if owner is not None and owner != tg: continue   # the place belongs to a different town
             d = hav_mi(t["clat"], t["clon"], pla, plo)
             if d <= 1.1 and (w - d) > bw:
                 bw, best = (w - d), pnm
