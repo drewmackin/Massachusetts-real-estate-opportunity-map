@@ -313,6 +313,7 @@
       <button data-v="sweet">★ Sweet</button>
     </div></div>
   <button id="topBtn" class="topbtn">🏘 Best in-budget hoods</button>
+  <button id="dealsBtn" class="topbtn" onclick="showDeals()">🔥 On-market deals</button>
   <button id="likesBtn" class="topbtn" onclick="showLikes()">♥ Liked</button>
   <span id="matchCount"></span>
   <div class="searchwrap"><input type="text" id="search" placeholder="Find a town…" aria-label="Find a town" autocomplete="off" /></div>
@@ -585,6 +586,50 @@ function showLikes(){
 }
 function unlike(k){if(LIKES.homes&&LIKES.homes[k]){delete LIKES.homes[k];LIKES.keys=Object.keys(LIKES.homes);
   persistLikes();updateLikeBtn();refreshParcelStyle();showLikes();}}
+
+/* ---------------- on-market deals board (live listings ranked vs our estimate) ---------------- */
+function dealOpen(geoid,lat,lon){const tp=TOWN_PROPS[geoid];if(tp)drillIn(tp);
+  if(lat&&lon)setTimeout(()=>map.flyTo([lat,lon],17,{duration:.8}),750);}
+function dealRow(l){
+  const tn=townName(l.town_geoid), bits=[tn];
+  if(l.beds)bits.push(Math.round(l.beds)+" bd"); if(l.baths)bits.push(l.baths+" ba");
+  if(l.sqft)bits.push(Math.round(l.sqft).toLocaleString()+" sqft"); if(l.dom!=null)bits.push(l.dom+"d on mkt");
+  const under=(l.disc!=null&&l.disc>=3)?`<span style="color:var(--buy);font-weight:800;margin-left:6px">−${l.disc}%</span>`:
+    (l.disc!=null&&l.disc<=-5)?`<span style="color:#fca5a5;font-weight:700;margin-left:6px">+${-l.disc}% over</span>`:"";
+  return `<div class="hood" onclick="dealOpen('${l.town_geoid}',${l.lat||'null'},${l.lon||'null'})">
+    <div class="hd"><div class="hn">${esch(l.addr)}${under}${l.url?` <a href="${esch(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-size:11px">↗</a>`:""}</div>
+      <div class="hsub">${esch(bits.join(" · "))}</div></div>
+    <div class="ap"><div style="font-weight:800">${fmtPrice(l.price)}</div>${l.est?`<small style="color:var(--muted2)">est ${fmtPrice(l.est)}</small>`:""}</div></div>`;
+}
+function showDeals(){
+  const sb=document.getElementById("sidebar");sb.classList.remove("empty");
+  const all=Object.values(LISTINGS.by_addr||{});
+  const inb=l=>l.price&&l.price>=120000&&l.price<=620000&&!/land|lot/i.test(l.ptype||"");
+  const actives=all.filter(l=>l.status==="active"&&inb(l));
+  const deals=actives.filter(l=>l.est&&l.disc!=null).sort((a,b)=>b.disc-a.disc);
+  const otherActive=actives.filter(l=>!(l.est&&l.disc!=null)).sort((a,b)=>(a.dom||999)-(b.dom||999));
+  const coming=all.filter(l=>l.status==="coming_soon"&&inb(l)).sort((a,b)=>(b.disc||-99)-(a.disc||-99)).slice(0,10);
+  const pre=Object.values(PRELIST.by_key||{}).filter(p=>{const tp=TOWN_PROPS[p.town_geoid];return tp&&(tp.budget_fit==="in"||tp.budget_fit==="below");}).sort((a,b)=>b.score-a.score).slice(0,12);
+  const upd=LIST_META?(" · updated "+esch(String(LIST_META).slice(0,10))):"";
+  let h=`<div class="backlink" onclick="drillOut()">← All of Massachusetts</div>
+    <div class="sb-head" style="padding-top:8px"><h2>🔥 On-market deals</h2>
+      <div class="sub">In-budget homes for sale now, ranked by how far the list price sits <b>below our estimate</b>${upd}</div></div>`;
+  if(!actives.length){
+    h+=`<div class="section"><div class="note">No live listings loaded yet for the areas covered so far. The nightly update rotates through more towns each night — run <b>python3 update_listings.py</b> to pull more now, or check back tomorrow.</div></div>`;
+  }else{
+    h+=`<div class="section"><h3>Best value for sale now <span class="pill">${deals.filter(d=>d.disc>=3).length}</span></h3>
+      <div class="note" style="margin-bottom:8px">List price vs our estimated market value. <b style="color:var(--buy)">−%</b> = listed under our estimate (a lead to investigate — verify condition).</div>
+      <div class="hoodlist">${(deals.length?deals:otherActive).slice(0,30).map(dealRow).join("")}</div></div>`;
+    if(coming.length)h+=`<div class="section"><h3>◆ Coming soon <span class="pill">${coming.length}</span></h3><div class="hoodlist">${coming.map(dealRow).join("")}</div></div>`;
+  }
+  if(pre.length)h+=`<div class="section"><h3>◇ Likely to list soon <span class="pill">off-market</span></h3>
+    <div class="note" style="margin-bottom:8px">Not on the market — predicted from ownership tenure, absentee/out-of-state owners &amp; redevelopment signals. A watch-list, not a guarantee.</div>
+    <div class="hoodlist">${pre.map(p=>`<div class="hood" onclick="dealOpen('${p.town_geoid}',${p.pt?p.pt[1]:'null'},${p.pt?p.pt[0]:'null'})">
+      <div class="hd"><div class="hn">${esch(p.addr||"(home)")}</div><div class="hsub">${esch(townName(p.town_geoid))}${p.years_owned?" · owned "+p.years_owned+" yrs":""}${p.reasons&&p.reasons[0]?" · "+esch(p.reasons[0]):""}</div></div>
+      <div class="ap" style="color:#5b9dff;font-weight:800">${p.score}</div></div>`).join("")}</div></div>`;
+  h+=`<div class="section"><div class="note">Listings via Redfin's public feed, matched to assessor parcels; estimate from this map's valuation engine. Best-effort leads — "not listed" can mean "not found". Coverage grows as the nightly job rotates through towns.</div></div>`;
+  sb.querySelector(".content").innerHTML=h;sb.scrollTop=0;
+}
 
 /* ---------------- statewide town leaderboard (shown in state view) ---------------- */
 function hiTown(gid,on){const l=townLayerByGeoid[gid];if(l&&view==="state")l.setStyle(on?{weight:2,color:"#fff",fillOpacity:.95}:styleFor(l.feature));}

@@ -44,6 +44,8 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 CTX = ssl.create_default_context(); CTX.check_hostname=False; CTX.verify_mode=ssl.CERT_NONE
 TODAY = date.today()
+NOWY  = TODAY.year + (TODAY.month - 0.5) / 12.0
+ASR   = 0.95
 
 def log(*a):
     if VERBOSE: print(*a, file=sys.stderr, flush=True)
@@ -270,6 +272,49 @@ def years_owned(ls_date):
 def is_res(p):  return str(p.get("USE_CODE") or "").startswith("1")
 def is_sf(p):   return str(p.get("USE_CODE") or "")[:3] == "101"
 
+# ---- valuation (mirrors estMarket() in index.html) so the deals board can rank list-vs-est ----
+def town_rate(appr5):
+    a = appr5 if appr5 is not None else 25
+    a = max(-25, min(120, a))
+    return (1 + a / 100.0) ** (1 / 5.0) - 1
+def rolled_assessed(p, rate):
+    tv = float(p.get("TOTAL_VAL") or 0)
+    if tv <= 0: return None
+    fy = 0
+    try: fy = int(re.sub(r"[^0-9]", "", str(p.get("FY") or ""))[:4] or 0)
+    except Exception: fy = 0
+    ry = max(0.3, NOWY - (fy - 1)) if 2015 <= fy <= 2030 else 2.0
+    return tv / ASR * ((1 + rate) ** ry)
+def region_psf(parcels, rate):
+    arr = []
+    for p in parcels:
+        if is_sf(p) and float(p.get("BLD_AREA") or 0) >= 400:
+            ra = rolled_assessed(p, rate)
+            if ra:
+                v = ra / float(p["BLD_AREA"])
+                if 60 < v < 2000: arr.append(v)
+    arr.sort()
+    return arr[len(arr)//2] if len(arr) >= 4 else None
+def est_market(p, psf, rate):
+    a = rolled_assessed(p, rate)
+    if a is None: return None
+    b = None
+    sqft = float(p.get("BLD_AREA") or 0)
+    if psf and is_sf(p) and sqft >= 400:
+        yr = parse_year(p.get("YEAR_BUILT")); age = (NOWY - yr) if yr else 0
+        age_adj = 0.92 if age > 100 else 0.96 if age > 70 else 0.99 if age > 40 else 1.0
+        size_adj = 0.88 if sqft > 4500 else 0.94 if sqft > 3200 else 1.05 if sqft < 900 else 1.0
+        b = sqft * psf * age_adj * size_adj
+    base = a if b is None else 0.65 * a + 0.35 * max(0.8 * a, min(1.25 * a, b))
+    lp = float(p.get("LS_PRICE") or 0); y = sale_year_int(p.get("LS_DATE"))
+    if lp > 0 and y and 0.45 * float(p.get("TOTAL_VAL") or 0) <= lp <= 3.0 * float(p.get("TOTAL_VAL") or 0):
+        age = max(0, NOWY - y)
+        if age <= 7:
+            w = 0.60 if age <= 2 else 0.42 if age <= 4 else 0.25 if age <= 6 else 0.12
+            sv = max(0.6 * base, min(1.8 * base, lp * ((1 + rate) ** age)))
+            return w * sv + (1 - w) * base
+    return base
+
 PRELIST_MIN = int(os.environ.get("MAP_PRELIST_MIN", "55"))   # flag ~top 2-6% (notably elevated odds)
 def prelist_score(p, town_appr):
     """0-100 'elevated odds of coming to market in ~12 mo' + reasons. A PREDICTION, not a
@@ -389,6 +434,7 @@ def main():
         for p in parcels:
             k = norm_addr(parcel_full(p))
             if k: by_key.setdefault(k, p)
+        rate = town_rate(r.get("appr5")); psf = region_psf(parcels, rate)   # for the est/disc on listings
 
         listed_keys = set()
         for L in rf:
@@ -403,6 +449,18 @@ def main():
             rec["last_seen"]  = TODAY.isoformat()
             if p:
                 rec["loc_id"] = p.get("LOC_ID"); rec["assessed"] = p.get("TOTAL_VAL")
+                # est/disc only for WHOLE-home sales: skip condos/units (a unit listing matched to its
+                # whole-building parcel gives an absurd "discount"), and bound disc to drop bad matches.
+                ptype = (L.get("ptype") or "").lower()
+                is_unit = bool(re.search(r"#|\bunit\b|\bapt\b|\bbsmt\b", (L.get("addr") or "").lower()))
+                is_condo = "condo" in ptype or "co-op" in ptype or str(p.get("USE_CODE") or "")[:3] == "102"
+                is_land = "land" in ptype or "lot" in ptype
+                if L.get("price") and not is_unit and not is_condo and not is_land:
+                    ev = est_market(p, psf, rate)
+                    if ev:
+                        disc = round((ev - L["price"]) / ev * 100)   # +% = listed below our est
+                        if -35 <= disc <= 35:                        # implausible => bad address match, drop
+                            rec["est"] = int(round(ev)); rec["disc"] = disc
                 by_loc[p.get("LOC_ID")] = rec; matched_count += 1
             by_addr[akey] = rec
             run_surfaced += 1
