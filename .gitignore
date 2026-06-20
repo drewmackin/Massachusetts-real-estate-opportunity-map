@@ -8,3 +8,8 @@ data/likes.json
 __pycache__/
 *.pyc
 .DS_Store
+
+# Generated single-file bundles (regenerate with bundle.py) — kept local, like
+# Gulf Coast's dist/. GitHub Pages serves the lean multi-file app from index.html.
+dist/
+ma-opportunity-map.html
