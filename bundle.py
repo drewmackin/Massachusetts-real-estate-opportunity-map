@@ -18,6 +18,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 SRC  = os.path.join(HERE, "index.html")
 OUT  = os.path.join(HERE, "ma-opportunity-map.html")
+# Same standalone file, named index.html so GitHub Pages (and most static hosts)
+# serve it at the ROOT url with zero extra steps. In dist/ so it never clobbers
+# the multi-file dev index.html.
+DIST = os.path.join(HERE, "dist", "index.html")
 
 # The exact files index.html fetches from ./data/ (see boot() in index.html).
 FILES = [
@@ -99,7 +103,10 @@ def main():
     html = html.replace(anchor, anchor + inject, 1)
 
     open(OUT, "w", encoding="utf-8").write(html)
+    os.makedirs(os.path.dirname(DIST), exist_ok=True)
+    open(DIST, "w", encoding="utf-8").write(html)
     print(f"\n  wrote {OUT}")
+    print(f"  wrote {DIST}  (upload-ready: named index.html for Pages root)")
     print(f"  data inlined: {total:,} bytes across {len(blocks)} files")
     print(f"  output size:  {os.path.getsize(OUT):,} bytes")
 
